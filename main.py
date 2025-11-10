@@ -13,6 +13,9 @@ def main():
         elif userInput.strip().lower() == "what time is it":
             print(core.gideon.samay())
 
+        elif userInput.strip().lower() == "what day is it":
+            print(core.gideon.din())
+
         else:
             print("G.I.D.E.O.N: I'm sorry, I didn't understand that command.")
 
