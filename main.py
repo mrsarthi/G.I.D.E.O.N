@@ -18,11 +18,11 @@ def queryParse(input):
     return platform, query
 
 
-def main():
+def commandRouter():
     while True:
-        userInput = input("You: ").strip().lower()
+        userInput = input("> ").strip().lower()
 
-        if userInput == "exit":
+        if userInput == "exit" or userInput == "bye":
             print("G.I.D.E.O.N: Shutting down. Goodbye Boss!")
             break
 
@@ -44,7 +44,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    commandRouter()
 
 
 # open youtube and search for nlu tutorials

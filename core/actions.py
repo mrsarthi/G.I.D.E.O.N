@@ -2,7 +2,7 @@ from datetime import *
 import webbrowser
 
 def samay():
-    return datetime.now().strftime("%H:%M:%S")
+    return datetime.now().strftime("%H:%M")
 
 def din():
     return datetime.now().strftime("%A, %B %d, %Y")
@@ -19,6 +19,10 @@ def browser(query, platform):
     elif platform == "google":
         url = f"https://www.google.com/search?q={query.replace(' ', '+')}"
         webbrowser.open(url)
+
+    # elif platform == "music":
+    #     url = f"https://music.youtube.com/search?q={query.replace(' ', '+')}"
+    #     webbrowser.open(url)
 
     else:
         url = None
