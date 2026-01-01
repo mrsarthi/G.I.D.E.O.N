@@ -1,5 +1,6 @@
 import core.actions
 import time
+from core.database import log_command
 
 print("""G.I.D.E.O.N is now online.
 Hello Boss!""")
@@ -21,6 +22,7 @@ def queryParse(input):
 def commandRouter():
     while True:
         userInput = input("> ").strip().lower()
+        log_command(userInput)
 
         if userInput == "exit" or userInput == "bye":
             print("G.I.D.E.O.N: Shutting down. Goodbye Boss!")
