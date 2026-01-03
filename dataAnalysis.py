@@ -9,4 +9,5 @@ cursor = conn.cursor()
 
 df = pd.read_sql_query("SELECT * from  history", conn)
 
+# print(df.info())
 print(df.head())
