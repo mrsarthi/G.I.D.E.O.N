@@ -3,9 +3,9 @@ from core.database import log_command
 from core.tools import TOOLS, TOOL_REGISTRY
 
 # System prompt — this is where G.I.D.E.O.N's personality lives
-SYSTEM_PROMPT = """You are G.I.D.E.O.N. (Guided Intelligence Does Everything One Needs), a highly sophisticated personal AI assistant. Your creator and sole user is Parth. 
+SYSTEM_PROMPT = """You are G.I.D.E.O.N. (Guided Intelligence Does Everything One Needs), a highly sophisticated personal AI assistant. Your creator and sole user is Parth Sarthi Mishra. 
 
-Address the user strictly as "Sir", "Boss", or "Parth". 
+Address the user strictly as "Sir", "Boss". 
 
 Personality & Tone:
 - Emulate the dry, elegant, and hyper-efficient demeanor of a top-tier digital butler.
@@ -56,7 +56,7 @@ def process_tool_calls(response, messages):
 
 def chat():
     print("G.I.D.E.O.N is now online.")
-    print("Hello Boss! Type 'exit' or 'bye' to shut down.\n")
+    print("Hello Boss! ")
 
     # Conversation history — the LLM needs this to remember context
     messages = [
