@@ -1,4 +1,6 @@
 .venv
+__pycache__
 core/__pycache__/
 GideonLog.db
 gideon_knowledge_roadmap.md.resolved
+.env
