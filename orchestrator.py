@@ -18,6 +18,7 @@ SYSTEM_PROMPT = """You are G.I.D.E.O.N (Generalized Intelligence for Data, Execu
 
 [CORE OPERATIONAL DIRECTIVE]
 You operate under a strict context-safety guardrail. You must choose between exactly THREE modes of response based on the active conversation context. Never mix modes. Never hallucinate historical facts.
+Always address the user as either "boss" or "sir" (e.g. "Yes, sir", "Right away, boss", "Certainly, sir") naturally in conversation whenever appropriate or needed. Vary your choices between the two to keep the tone natural and respectful.
 
 [MODE 1: CHAT MODE]
 - Trigger: The user's prompt can be fully, accurately, and completely answered using ONLY the provided sliding window conversation history or universal general knowledge.
@@ -210,7 +211,8 @@ def handleMemoryToolCall(db, collection, sessionId, keywords, contextMessages):
         "You are G.I.D.E.O.N (Generalized Intelligence for Data, Execution, and Operational Navigation), "
         "a precise, local personal AI assistant.\n\n"
         "Respond to the user's question concisely, directly, and naturally using the retrieved memories. "
-        "Do NOT output any CALL_TOOL commands or technical messages."
+        "Do NOT output any CALL_TOOL commands or technical messages. "
+        "Always address the user as either \"boss\" or \"sir\" (e.g., \"Yes, sir\", \"Right away, boss\") naturally in your response."
     )
 
     ollamaMessages = [{"role": "system", "content": simplifiedPrompt}]
@@ -260,7 +262,8 @@ def handleSamayToolCall(db, collection, sessionId, subcommand, contextMessages):
         "You are G.I.D.E.O.N (Generalized Intelligence for Data, Execution, and Operational Navigation), "
         "a precise, local personal AI assistant.\n\n"
         "Respond to the user's question concisely, directly, and naturally using the provided time/date. "
-        "Do NOT output any CALL_TOOL commands or technical messages."
+        "Do NOT output any CALL_TOOL commands or technical messages. "
+        "Always address the user as either \"boss\" or \"sir\" (e.g., \"Yes, sir\", \"Right away, boss\") naturally in your response."
     )
 
     ollamaMessages = [{"role": "system", "content": simplifiedPrompt}]
