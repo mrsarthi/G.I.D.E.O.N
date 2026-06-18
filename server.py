@@ -1,5 +1,7 @@
 from contextlib import asynccontextmanager
+import json
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -108,7 +110,7 @@ def get_session_history(session_id: str):
 
 @app.post("/api/chat")
 def chat(data: MessageRequest):
-    """Processes a user message, runs the orchestrator pipeline, and intercepts tool calls."""
+    """Processes a user message, runs the orchestrator pipeline, and intercepts tool calls with streaming support."""
     try:
         session_id = data.session_id
         message = data.message.strip()
@@ -128,36 +130,79 @@ def chat(data: MessageRequest):
         # Step 4: Prep and format history for Ollama
         ollama_messages = orchestrator.formatMessagesForOllama(context_messages)
         
-        # Step 5: Execute primary Ollama call
-        response = orchestrator.runModel(ollama_messages)
-        
-        # Step 6: Scan for tool call patterns
-        memory_match = orchestrator.MEMORY_TOOL_PATTERN.search(response)
-        samay_match = orchestrator.SAMAY_TOOL_PATTERN.search(response)
-        
-        if memory_match:
-            keywords = memory_match.group(1)
-            # handleMemoryToolCall executes tool, logs output, re-runs model, and returns final string
-            final_response = orchestrator.handleMemoryToolCall(
-                db_manager, chroma_collection, session_id, keywords, context_messages
-            )
-        elif samay_match:
-            subcommand = samay_match.group(1)
-            # handleSamayToolCall executes tool, logs output, re-runs model, and returns final string
-            final_response = orchestrator.handleSamayToolCall(
-                db_manager, chroma_collection, session_id, subcommand, context_messages
-            )
-        else:
-            # Standard chat: log response to SQLite & ChromaDB
-            assistant_id = db_manager.insert_message(session_id, "assistant", response)
-            memory.addMemory(chroma_collection, assistant_id, response, session_id, "assistant", datetime.now().isoformat())
-            final_response = response
+        def chat_generator():
+            # Step 5: Start streaming the first pass response
+            stream1 = orchestrator.streamModelGenerator(ollama_messages)
             
-        return {
-            "status": "success",
-            "response": final_response,
-            "session_id": session_id
-        }
+            # Buffer first few characters to check for tool call
+            buffer = ""
+            is_tool_call = False
+            prefix = "CALL_TOOL:"
+            
+            for chunk in stream1:
+                buffer += chunk
+                stripped = buffer.lstrip()
+                
+                if not stripped:
+                    continue
+                    
+                if len(stripped) < len(prefix):
+                    if prefix.startswith(stripped):
+                        continue
+                    else:
+                        break
+                else:
+                    if stripped.startswith(prefix):
+                        is_tool_call = True
+                    break
+            
+            if is_tool_call:
+                # Consume the rest of the tool call command stream
+                for chunk in stream1:
+                    buffer += chunk
+                
+                # Scan for tool call patterns
+                memory_match = orchestrator.MEMORY_TOOL_PATTERN.search(buffer)
+                samay_match = orchestrator.SAMAY_TOOL_PATTERN.search(buffer)
+                
+                if memory_match:
+                    keywords = memory_match.group(1).strip()
+                    for token in orchestrator.streamMemoryToolCall(
+                        db_manager, chroma_collection, session_id, keywords, context_messages
+                    ):
+                        yield f"data: {json.dumps({'text': token})}\n\n"
+                elif samay_match:
+                    subcommand = samay_match.group(1).strip()
+                    for token in orchestrator.streamSamayToolCall(
+                        db_manager, chroma_collection, session_id, subcommand, context_messages
+                    ):
+                        yield f"data: {json.dumps({'text': token})}\n\n"
+                else:
+                    # Fallback if pattern match fails: stream the raw buffer
+                    yield f"data: {json.dumps({'text': buffer})}\n\n"
+                    # Log response to SQLite & ChromaDB
+                    assistant_id = db_manager.insert_message(session_id, "assistant", buffer)
+                    memory.addMemory(chroma_collection, assistant_id, buffer, session_id, "assistant", datetime.now().isoformat())
+            else:
+                # Not a tool call: yield the initial buffered text
+                yield f"data: {json.dumps({'text': buffer})}\n\n"
+                final_response = buffer
+                
+                # Stream the remainder of the first-pass response
+                for chunk in stream1:
+                    final_response += chunk
+                    yield f"data: {json.dumps({'text': chunk})}\n\n"
+                
+                # Log response to SQLite & ChromaDB
+                assistant_id = db_manager.insert_message(session_id, "assistant", final_response)
+                memory.addMemory(chroma_collection, assistant_id, final_response, session_id, "assistant", datetime.now().isoformat())
+                
+        return StreamingResponse(
+            chat_generator(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+        )
+        
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

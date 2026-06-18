@@ -547,17 +547,58 @@ document.addEventListener('DOMContentLoaded', () => {
                     message: query
                 })
             });
-            const data = await res.json();
             
-            if (res.ok && data.status === 'success') {
-                runTypewriter(data.response, 'hud-text', 15);
-                loadHistory(currentSessionId);
-                triggerAlert("G.I.D.E.O.N: Core response received.");
-            } else {
-                const errMsg = data.detail || "Unknown error";
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                const errMsg = errData.detail || "Unknown error";
                 if (hudText) hudText.textContent = `Error: ${errMsg}`;
                 triggerAlert("G.I.D.E.O.N: Core processing failure.");
+                return;
             }
+            
+            // Set up UI for streaming
+            if (hudText) hudText.textContent = '';
+            const dot = document.querySelector('.hud-dot');
+            if (dot) dot.classList.add('pulsing');
+            
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder('utf-8');
+            let buffer = '';
+            let fullText = '';
+            
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop();
+                
+                for (const line of lines) {
+                    const stripped = line.trim();
+                    if (!stripped || !stripped.startsWith('data:')) continue;
+                    
+                    try {
+                        const parsed = JSON.parse(stripped.slice(5).trim());
+                        if (parsed.text) {
+                            fullText += parsed.text;
+                            triggerReaction(500); // keep the model reactive during streaming
+                            if (hudText) {
+                                hudText.textContent = fullText;
+                                const hudBody = hudText.parentElement;
+                                if (hudBody) hudBody.scrollTop = hudBody.scrollHeight;
+                            }
+                        }
+                    } catch (e) {
+                        console.error('Failed to parse SSE line:', e);
+                    }
+                }
+            }
+            
+            if (dot) dot.classList.remove('pulsing');
+            loadHistory(currentSessionId);
+            triggerAlert("G.I.D.E.O.N: Core response received.");
+            
         } catch (err) {
             console.error('Failed to communicate with G.I.D.E.O.N core:', err);
             if (hudText) hudText.textContent = "Error: Connection lost with G.I.D.E.O.N Core API. Check server console.";

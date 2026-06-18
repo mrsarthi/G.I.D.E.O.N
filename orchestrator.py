@@ -289,6 +289,129 @@ def handleSamayToolCall(db, collection, sessionId, subcommand, contextMessages):
     return finalResponse
 
 
+def streamModelGenerator(messages):
+    """Send messages to Ollama and yield chunk content as it arrives."""
+    stream = ollama.chat(
+        model=CHAT_MODEL,
+        messages=messages,
+        stream=True
+    )
+    for chunk in stream:
+        yield chunk['message']['content']
+
+
+def streamMemoryToolCall(db, collection, sessionId, keywords, contextMessages):
+    """Handle a CALL_TOOL: search_memory interception with SSE streaming support.
+    
+    Queries Chroma, logs tool outputs, re-runs model in a stream, and yields chunks.
+    """
+    # Step 1: Log the assistant's tool call command
+    toolCallContent = f"CALL_TOOL: search_memory [{keywords}]"
+    toolCallId = db.insert_message(sessionId, "assistant", toolCallContent, tool_name="search_memory", tool_args=json.dumps({"keywords": keywords}))
+    addMemory(collection, toolCallId, toolCallContent, sessionId, "assistant", datetime.now().isoformat())
+
+    # Step 2: Execute search_memory tool (queries Chroma)
+    results = queryMemory(collection, keywords, sessionId, limit=3)
+    
+    # Step 3: Log the tool response
+    if results and results.get("documents") and results["documents"][0]:
+        memories = results["documents"][0]
+        metadatas = results["metadatas"][0] if results.get("metadatas") else []
+        memoryTexts = []
+        for doc, meta in zip(memories, metadatas):
+            meta = meta or {}
+            memoryTexts.append(f"[Session: {meta.get('session_id', '?')}, Role: {meta.get('role', '?')}] {doc}")
+        toolResponse = "RETRIEVED MEMORIES:\n" + "\n---\n".join(memoryTexts)
+    else:
+        toolResponse = "RETRIEVED MEMORIES: No relevant past conversations found."
+
+    toolResponseId = db.insert_message(sessionId, "tool", toolResponse, tool_name="search_memory")
+    addMemory(collection, toolResponseId, toolResponse, sessionId, "tool", datetime.now().isoformat())
+
+    # Step 4: Re-run the model with injected memories
+    simplifiedPrompt = (
+        "You are G.I.D.E.O.N (Generalized Intelligence for Data, Execution, and Operational Navigation), "
+        "a precise, local personal AI assistant.\n\n"
+        "Respond to the user's question concisely, directly, and naturally using the retrieved memories. "
+        "Do NOT output any CALL_TOOL commands or technical messages. "
+        "Always address the user as either \"boss\" or \"sir\" (e.g., \"Yes, sir\", \"Right away, boss\") naturally in your response."
+    )
+
+    ollamaMessages = [{"role": "system", "content": simplifiedPrompt}]
+    for msg in contextMessages:
+        role = msg["role"]
+        content = msg["content"]
+        if role == "tool":
+            ollamaMessages.append({"role": "user", "content": f"[Tool Output]\n{content}"})
+        else:
+            ollamaMessages.append({"role": role, "content": content})
+
+    ollamaMessages.append({"role": "assistant", "content": toolCallContent})
+    ollamaMessages.append({"role": "user", "content": f"[Tool Output]\n{toolResponse}"})
+
+    print("\n\033[90m[Memory search complete. Generating response...]\033[0m\n")
+
+    finalResponse = ""
+    for chunk in streamModelGenerator(ollamaMessages):
+        finalResponse += chunk
+        yield chunk
+
+    # Step 5: Log the final enriched response
+    finalId = db.insert_message(sessionId, "assistant", finalResponse, tool_name="search_memory")
+    addMemory(collection, finalId, finalResponse, sessionId, "assistant", datetime.now().isoformat())
+
+
+def streamSamayToolCall(db, collection, sessionId, subcommand, contextMessages):
+    """Handle a CALL_TOOL: samay interception with SSE streaming support.
+    
+    Executes samay tool, logs outputs, re-runs model in a stream, and yields chunks.
+    """
+    # Step 1: Log the assistant's tool call command
+    toolCallContent = f"CALL_TOOL: samay [{subcommand}]"
+    toolCallId = db.insert_message(sessionId, "assistant", toolCallContent, tool_name="samay", tool_args=json.dumps({"subcommand": subcommand}))
+    addMemory(collection, toolCallId, toolCallContent, sessionId, "assistant", datetime.now().isoformat())
+
+    # Step 2: Execute the samay tool
+    result = samay_execute(subcommand.strip())
+
+    # Step 3: Log the tool response
+    toolResponse = f"SAMAY TOOL RESULT: {result}"
+    toolResponseId = db.insert_message(sessionId, "tool", toolResponse, tool_name="samay")
+    addMemory(collection, toolResponseId, toolResponse, sessionId, "tool", datetime.now().isoformat())
+
+    # Step 4: Re-run the model with injected time/date
+    simplifiedPrompt = (
+        "You are G.I.D.E.O.N (Generalized Intelligence for Data, Execution, and Operational Navigation), "
+        "a precise, local personal AI assistant.\n\n"
+        "Respond to the user's question concisely, directly, and naturally using the provided time/date. "
+        "Do NOT output any CALL_TOOL commands or technical messages. "
+        "Always address the user as either \"boss\" or \"sir\" (e.g., \"Yes, sir\", \"Right away, boss\") naturally in your response."
+    )
+
+    ollamaMessages = [{"role": "system", "content": simplifiedPrompt}]
+    for msg in contextMessages:
+        role = msg["role"]
+        content = msg["content"]
+        if role == "tool":
+            ollamaMessages.append({"role": "user", "content": f"[Tool Output]\n{content}"})
+        else:
+            ollamaMessages.append({"role": role, "content": content})
+
+    ollamaMessages.append({"role": "assistant", "content": toolCallContent})
+    ollamaMessages.append({"role": "user", "content": f"[Tool Output]\n{toolResponse}"})
+
+    print(f"\n\033[90m[Samay: {result}]\033[0m\n")
+
+    finalResponse = ""
+    for chunk in streamModelGenerator(ollamaMessages):
+        finalResponse += chunk
+        yield chunk
+
+    # Step 5: Log the final enriched response
+    finalId = db.insert_message(sessionId, "assistant", finalResponse, tool_name="samay")
+    addMemory(collection, finalId, finalResponse, sessionId, "assistant", datetime.now().isoformat())
+
+
 def selectSession(db):
     """Prompt the user to start a new session or resume an existing one."""
     print("\n\033[36m╔══════════════════════════════════════╗")
