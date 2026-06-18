@@ -1,13 +1,13 @@
 <!DOCTYPE html>
-<html lang="en">
+<html class="dark" lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>G.I.D.E.O.N - AI Dashboard</title>
-    <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Hanken+Grotesk:wght@300;400;500&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap" rel="stylesheet">
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>G.I.D.E.O.N. Neural Engine | Vapor Variant</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300;400;600;800&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
     <link rel="stylesheet" href="index.css">
-    <!-- Import Map for Three.js -->
     <script type="importmap">
       {
         "imports": {
@@ -16,188 +16,270 @@
         }
       }
     </script>
+    <style>
+        :root {
+            --vapor-glow: rgba(0, 242, 255, 0.15);
+            --vapor-glow-intense: rgba(0, 242, 255, 0.4);
+        }
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+        }
+        @keyframes pulse-diffused {
+            0%, 100% { filter: blur(40px) opacity(0.3); }
+            50% { filter: blur(60px) opacity(0.5); }
+        }
+        @keyframes soft-glow {
+            0%, 100% { text-shadow: 0 0 10px rgba(0, 242, 255, 0.2); }
+            50% { text-shadow: 0 0 25px rgba(0, 242, 255, 0.6); }
+        }
+        .vapor-container {
+            background: radial-gradient(circle at top left, rgba(255, 255, 255, 0.03), transparent);
+            backdrop-filter: blur(12px);
+        }
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .text-glow {
+            animation: soft-glow 4s ease-in-out infinite;
+        }
+        .fluid-border {
+            border: 1px solid rgba(0, 242, 255, 0.1);
+            transition: border 0.5s ease;
+        }
+        .fluid-border:hover {
+            border: 1px solid rgba(0, 242, 255, 0.3);
+        }
+        .bg-mesh {
+            background-image: radial-gradient(at 0% 0%, hsla(180,100%,50%,0.05) 0, transparent 50%), 
+                              radial-gradient(at 100% 100%, hsla(260,100%,50%,0.05) 0, transparent 50%);
+        }
+    </style>
+    <script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              colors: {
+                "primary": "#e1fdff",
+                "neural-cyan": "#00F2FF",
+                "obsidian-base": "#050508",
+                "surface": "#131317",
+                "on-surface": "#e5e1e7",
+                "glass-stroke": "rgba(0, 242, 255, 0.1)",
+                "pulse-emerald": "#00FF9D",
+                "system-red": "#FF2D55"
+              },
+              fontFamily: {
+                "body-md": ["Hanken Grotesk"],
+                "headline-xl": ["Hanken Grotesk"],
+                "label-xs": ["JetBrains Mono"],
+                "data-mono": ["JetBrains Mono"]
+              }
+            },
+          },
+        }
+    </script>
 </head>
-<body>
+<body class="bg-obsidian-base text-on-surface font-body-md selection:bg-neural-cyan/30 overflow-hidden bg-mesh">
 
     <!-- Alert Popup for Interactions -->
     <div class="alert-popup" id="alert-popup">G.I.D.E.O.N: Interface active. Model connection pending.</div>
 
-    <!-- Top Navigation Bar -->
-    <header>
-        <div class="brand-section">
-            <h1 class="brand-title">G.I.D.E.O.N</h1>
-            <div class="brand-divider"></div>
-            <span class="system-status">LOCAL CORE ONLINE</span>
+    <!-- Immersive Background Layer -->
+    <div class="fixed inset-0 pointer-events-none z-10 bg-gradient-to-b from-transparent via-obsidian-base/10 to-obsidian-base/60"></div>
+
+    <!-- TopNavBar: Minimalist & Borderless -->
+    <header class="fixed top-0 w-full z-50 flex justify-between items-center px-12 h-20 bg-transparent">
+        <div class="flex items-center gap-12">
+            <span class="font-headline-xl text-2xl font-extrabold tracking-[-0.05em] text-neural-cyan text-glow">G.I.D.E.O.N.</span>
+            <nav class="hidden md:flex gap-8">
+                <a id="nav-dashboard" class="text-neural-cyan text-xs font-semibold tracking-[0.2em] uppercase opacity-100 cursor-pointer">Dashboard</a>
+                <a id="nav-neural" class="text-on-surface/50 text-xs font-medium tracking-[0.2em] uppercase hover:text-neural-cyan transition-all duration-500 cursor-pointer">Neural Net</a>
+                <a id="nav-archive" class="text-on-surface/50 text-xs font-medium tracking-[0.2em] uppercase hover:text-neural-cyan transition-all duration-500 cursor-pointer">Archive</a>
+            </nav>
         </div>
-        <div class="header-nav">
-            <a class="nav-link active" id="nav-dashboard">Dashboard</a>
-            <a class="nav-link" id="nav-neural">Neural Net</a>
-            <a class="nav-link" id="nav-archive">Archive</a>
-        </div>
-        <div class="header-metrics">
-            <div class="clock-container">
-                <p id="clock">12:00:00</p>
-                <p class="clock-label">Local Time</p>
+        <div class="flex items-center gap-6">
+            <!-- Header Session Switcher -->
+            <div class="flex items-center gap-2 bg-surface/60 border border-neural-cyan/20 px-3 py-1.5 rounded-full backdrop-blur-md shadow-sm">
+                <span class="material-symbols-outlined text-neural-cyan text-xs">forum</span>
+                <select id="session-select-header" class="bg-transparent border-none text-on-surface text-[10px] font-data-mono tracking-widest uppercase outline-none focus:ring-0 cursor-pointer max-w-[155px] p-0 pr-6">
+                    <!-- Dynamic sessions will be loaded here -->
+                </select>
+                <button id="new-session-btn-header" class="text-neural-cyan hover:text-neural-cyan/80 transition-colors flex items-center justify-center" title="New Session">
+                    <span class="material-symbols-outlined text-[14px]">add</span>
+                </button>
             </div>
-            <div class="header-icons">
-                <span class="material-symbols-outlined">sensors</span>
-                <span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">battery_charging_full</span>
-                <span class="material-symbols-outlined">settings</span>
+
+            <div class="flex gap-1">
+                <button class="p-2 text-on-surface/40 hover:text-neural-cyan transition-colors duration-500"><span class="material-symbols-outlined text-sm">sensors</span></button>
+                <button class="p-2 text-on-surface/40 hover:text-neural-cyan transition-colors duration-500"><span class="material-symbols-outlined text-sm">terminal</span></button>
+            </div>
+            <div class="text-right">
+                <p id="clock" class="text-neural-cyan font-data-mono text-xs font-bold tracking-widest">12:00:00</p>
+                <p class="text-[9px] uppercase opacity-40 mt-1">Local Time</p>
             </div>
         </div>
     </header>
 
-    <!-- Left Panel: Neural Engine -->
-    <aside class="sidebar sidebar-left glass-panel glow-teal" id="left-sidebar">
-        <div class="sidebar-title-section">
-            <h2 class="display-font tracking-widest text-primary-fixed" style="font-size: 14px; text-transform: uppercase;">Neural Engine</h2>
-            <p class="sidebar-subtitle">V1.0.0 Stable Core</p>
-        </div>
-        
-        <div class="metrics-list">
-            <!-- Metric Item 1 -->
-            <div class="metric-item">
-                <div class="metric-info">
-                    <span class="metric-name">CPU LOAD</span>
-                    <span class="metric-val" id="cpu-val">32%</span>
-                </div>
-                <div class="metric-bar-bg">
-                    <div class="metric-bar-fill" id="cpu-bar" style="width: 32%"></div>
-                </div>
-            </div>
-            <!-- Metric Item 2 -->
-            <div class="metric-item">
-                <div class="metric-info">
-                    <span class="metric-name">GPU COMPUTE</span>
-                    <span class="metric-val" id="gpu-val">12%</span>
-                </div>
-                <div class="metric-bar-bg">
-                    <div class="metric-bar-fill" id="gpu-bar" style="width: 12%"></div>
-                </div>
-            </div>
-            <!-- Metric Item 3 -->
-            <div class="metric-item">
-                <div class="metric-info">
-                    <span class="metric-name">THREAD LATENCY</span>
-                    <span class="metric-val" id="latency-val">18ms</span>
-                </div>
-                <div class="metric-bar-bg">
-                    <div class="metric-bar-fill" id="latency-bar" style="width: 45%"></div>
-                </div>
-            </div>
-        </div>
-
-        <nav class="sidebar-nav">
-            <div class="sidebar-nav-item active" id="nav-item-engine">
-                <span class="material-symbols-outlined">psychology</span>
-                <span class="nav-text">Neural Engine</span>
-            </div>
-            <div class="sidebar-nav-item" id="nav-item-memory">
-                <span class="material-symbols-outlined">memory</span>
-                <span class="nav-text">Memory Flow</span>
-            </div>
-            <div class="sidebar-nav-item" id="nav-item-storage">
-                <span class="material-symbols-outlined">database</span>
-                <span class="nav-text">Storage File</span>
-            </div>
+    <!-- SideNavBar: Soft Vertical Strip -->
+    <aside class="fixed left-0 top-0 h-full z-40 flex flex-col py-24 bg-transparent w-20 group items-center">
+        <nav class="flex flex-col gap-10">
+            <button id="nav-item-engine" class="text-neural-cyan relative transition-all duration-500">
+                <span class="material-symbols-outlined text-[20px]" style="font-variation-settings: 'FILL' 1;">psychology</span>
+                <div class="absolute -inset-2 bg-neural-cyan/10 rounded-full blur-md"></div>
+            </button>
+            <button id="nav-item-memory" class="text-on-surface/30 hover:text-neural-cyan transition-all duration-500">
+                <span class="material-symbols-outlined text-[20px]">memory</span>
+            </button>
+            <button id="nav-item-storage" class="text-on-surface/30 hover:text-neural-cyan transition-all duration-500">
+                <span class="material-symbols-outlined text-[20px]">database</span>
+            </button>
         </nav>
+        <div class="mt-auto flex flex-col gap-8 items-center">
+            <button class="text-on-surface/20 hover:text-pulse-emerald transition-colors"><span class="material-symbols-outlined text-[18px]">sync_alt</span></button>
+            <button class="text-on-surface/20 hover:text-system-red transition-colors"><span class="material-symbols-outlined text-[18px]">security</span></button>
+        </div>
     </aside>
 
-    <!-- Right Panel: System Metrics / Session History -->
-    <aside class="sidebar sidebar-right glass-panel" id="right-sidebar">
-        <div class="sidebar-title-section" style="text-align: right;">
-            <h2 class="display-font tracking-widest" id="right-sidebar-title" style="font-size: 14px; text-transform: uppercase; color: var(--secondary-color);">Metrics</h2>
-            <p class="sidebar-subtitle" id="right-sidebar-subtitle">System Status Details</p>
-        </div>
+    <!-- Main Canvas -->
+    <main class="relative z-20 ml-20 h-screen flex items-center justify-center overflow-hidden">
         
-        <!-- Metrics List (Visible by default) -->
-        <div class="metrics-list" id="metrics-view" style="text-align: right; display: flex;">
-            <!-- Text Metric 1 -->
-            <div class="metric-group-text">
-                <p class="metric-text-label">RAM UTILIZATION</p>
-                <p class="metric-text-val" id="ram-val">4.8 GB <span>/ 16GB</span></p>
-            </div>
-            <!-- Text Metric 2 -->
-            <div class="metric-group-text">
-                <p class="metric-text-label">UPLINK BANDWIDTH</p>
-                <p class="metric-text-val">840 Mbps</p>
-            </div>
-            <!-- Text Metric 3 -->
-            <div class="metric-group-text">
-                <p class="metric-text-label">SYSTEM DRIVE HEALTH</p>
-                <p class="metric-text-val">Optimal</p>
-            </div>
-        </div>
-
-        <!-- Session History List (Hidden by default) -->
-        <div class="history-list" id="history-view" style="display: none; text-align: left; flex: 1; flex-direction: column; overflow-y: auto; gap: 16px; padding-right: 4px;">
-            <div class="session-selector-container" style="margin-bottom: 8px;">
-                <label class="metric-text-label" style="display: block; margin-bottom: 6px; font-size: 9px; opacity: 0.6;">ACTIVE SESSION</label>
-                <select id="session-select" class="session-select-dropdown" style="width: 100%; background: rgba(16, 18, 35, 0.7); border: 1px solid var(--surface-border); color: var(--text-main); border-radius: 8px; padding: 8px; font-size: 12px; outline: none; cursor: pointer;"></select>
-                <button id="new-session-btn" style="width: 100%; margin-top: 8px; background: rgba(95, 251, 214, 0.08); border: 1px solid rgba(95, 251, 214, 0.25); color: var(--primary-fixed); border-radius: 8px; padding: 6px 12px; font-size: 11px; cursor: pointer; transition: all 0.3s; font-weight: 600;">+ NEW SESSION</button>
-            </div>
-            <div id="chat-history-log" style="display: flex; flex-direction: column; gap: 14px; font-size: 12px; padding-top: 8px;">
-                <!-- Chat log messages injected here -->
-            </div>
-        </div>
-
-        <nav class="sidebar-nav" style="align-items: flex-end; width: 100%;">
-            <div class="sidebar-nav-item active" id="nav-item-context" style="width: 100%; justify-content: flex-end;">
-                <span class="nav-text" style="margin-right: 12px;">Context Control</span>
-                <span class="material-symbols-outlined">settings_input_component</span>
-            </div>
-            <div class="sidebar-nav-item" id="nav-item-history" style="width: 100%; justify-content: flex-end;">
-                <span class="nav-text" style="margin-right: 12px;">History Log</span>
-                <span class="material-symbols-outlined">history</span>
-            </div>
-        </nav>
-    </aside>
-
-    <!-- Main Content: Holographic Avatar & Response HUD -->
-    <main>
-        <!-- The Holographic Avatar -->
-        <div class="hologram-container" id="hologram-container">
-            <div class="interactive-zone" id="avatar-zone">
-                <div id="canvas-container" class="holographic-orb-canvas"></div>
+        <!-- Left Atmospheric Stats -->
+        <div id="left-sidebar" class="absolute left-12 top-1/2 -translate-y-1/2 space-y-12 w-56">
+            <div class="opacity-80 group">
+                <p class="text-[10px] font-data-mono tracking-[0.3em] text-on-surface/40 mb-4 uppercase">Engine Load</p>
+                <div class="flex flex-col gap-4">
+                    <div class="w-full">
+                        <div class="flex justify-between items-end mb-1">
+                            <span class="text-[9px] font-data-mono text-on-surface/60 uppercase">CPU Load</span>
+                            <span id="cpu-val" class="text-[10px] font-data-mono text-neural-cyan">32%</span>
+                        </div>
+                        <div class="w-full bg-neural-cyan/5 h-1.5 rounded-full overflow-hidden relative">
+                            <div id="cpu-bar" class="absolute top-0 left-0 h-full bg-neural-cyan/60 transition-all duration-1000" style="width: 32%"></div>
+                        </div>
+                    </div>
+                    <div class="w-full">
+                        <div class="flex justify-between items-end mb-1">
+                            <span class="text-[9px] font-data-mono text-on-surface/60 uppercase">GPU Compute</span>
+                            <span id="gpu-val" class="text-[10px] font-data-mono text-neural-cyan">12%</span>
+                        </div>
+                        <div class="w-full bg-neural-cyan/5 h-1.5 rounded-full overflow-hidden relative">
+                            <div id="gpu-bar" class="absolute top-0 left-0 h-full bg-neural-cyan/60 transition-all duration-1000" style="width: 12%"></div>
+                        </div>
+                    </div>
+                    <div class="w-full">
+                        <div class="flex justify-between items-end mb-1">
+                            <span class="text-[9px] font-data-mono text-on-surface/60 uppercase">Thread Latency</span>
+                            <span id="latency-val" class="text-[10px] font-data-mono text-neural-cyan">18ms</span>
+                        </div>
+                        <div class="w-full bg-neural-cyan/5 h-1.5 rounded-full overflow-hidden relative">
+                            <div id="latency-bar" class="absolute top-0 left-0 h-full bg-neural-cyan/60 transition-all duration-1000" style="width: 45%"></div>
+                        </div>
+                    </div>
+                </div>
+                <p class="mt-6 text-[10px] font-data-mono text-neural-cyan/60">UPLINK_01: NOMINAL</p>
             </div>
         </div>
 
-        <!-- Floating G.I.D.E.O.N Live HUD Response Panel -->
-        <div class="response-hud" id="response-hud">
-            <div class="hud-header">
-                <span class="hud-status">G.I.D.E.O.N CORE RESPONDING</span>
-                <span class="hud-dot"></span>
+        <!-- Central Integrated Hero -->
+        <div id="hologram-container" class="relative w-[500px] h-[500px] flex items-center justify-center -mt-24">
+            <!-- Diffused Atmospheric Glows -->
+            <div class="absolute inset-0 bg-neural-cyan/5 rounded-full blur-[120px] animate-[pulse-diffused_8s_infinite]"></div>
+            <div id="avatar-zone" class="relative group w-full h-full flex items-center justify-center">
+                <!-- Peripheral Rings -->
+                <div class="absolute inset-[-40px] rounded-full border border-neural-cyan/5 transition-all duration-1000 group-hover:inset-[-60px] group-hover:border-neural-cyan/10 pointer-events-none"></div>
+                <div class="absolute inset-[-20px] rounded-full border border-neural-cyan/10 transition-all duration-700 group-hover:inset-[-30px] pointer-events-none"></div>
+                
+                <!-- 3D WebGL Canvas -->
+                <div id="canvas-container" class="w-full h-full rounded-full overflow-hidden relative shadow-[0_0_80px_rgba(0,242,255,0.1)]">
+                </div>
+                
+                <div class="absolute -bottom-16 left-1/2 -translate-x-1/2 text-center pointer-events-none">
+                    <p class="font-headline-xl text-lg font-light tracking-[0.5em] text-neural-cyan/70 uppercase">Core Status</p>
+                    <p class="text-[10px] font-data-mono text-on-surface/40 mt-1">SYSTEM_READY_0.9.1</p>
+                </div>
             </div>
-            <div class="hud-body" id="hud-text">Initialize link by engaging G.I.D.E.O.N below...</div>
         </div>
 
-        <!-- Organic Prompt Chips -->
-        <div class="prompt-chips-group">
-            <button class="prompt-chip" data-prompt="check sys health">"Check system health status"</button>
-            <button class="prompt-chip" data-prompt="optimize memory">"Optimize system memory load"</button>
-            <button class="prompt-chip" data-prompt="run diagnostic">"Run neural network diagnostic"</button>
+        <!-- Right Atmospheric Metrics -->
+        <div id="right-sidebar" class="absolute right-12 top-1/2 -translate-y-1/2 space-y-8 w-64 text-right flex flex-col h-[70vh] justify-center">
+            <div class="flex justify-end gap-4 mb-2">
+                <button id="nav-item-context" class="text-[9px] font-data-mono uppercase tracking-widest text-neural-cyan hover:text-neural-cyan transition-colors">Metrics</button>
+                <button id="nav-item-history" class="text-[9px] font-data-mono uppercase tracking-widest text-on-surface/30 hover:text-neural-cyan transition-colors">History</button>
+            </div>
+            
+            <div class="text-right">
+                <h2 id="right-sidebar-title" class="font-headline-xl text-sm tracking-widest text-neural-cyan uppercase hidden">System Metrics</h2>
+                <p id="right-sidebar-subtitle" class="text-[10px] font-data-mono text-on-surface/40 mt-1 hidden">Detail view</p>
+            </div>
+            
+            <div id="metrics-view" class="space-y-8">
+                <div>
+                    <p class="text-[10px] font-data-mono tracking-[0.3em] text-on-surface/40 mb-1 uppercase">Memory Array</p>
+                    <p id="ram-val" class="text-3xl font-light text-neural-cyan/80">6.0<span class="text-sm opacity-30 font-data-mono">GB</span></p>
+                </div>
+                <div class="opacity-60">
+                    <p class="text-[10px] font-data-mono tracking-[0.3em] text-on-surface/40 mb-1 uppercase">Flux Density</p>
+                    <p class="text-3xl font-light text-neural-cyan/80">840<span class="text-sm opacity-30 font-data-mono">MBPS</span></p>
+                </div>
+                <div class="flex items-center justify-end gap-3 pt-4 border-t border-neural-cyan/5">
+                    <span class="text-[9px] font-data-mono text-pulse-emerald/60 tracking-widest uppercase">Drive: Stable</span>
+                    <div class="w-1.5 h-1.5 rounded-full bg-pulse-emerald shadow-[0_0_8px_#00FF9D]"></div>
+                </div>
+            </div>
+
+            <div id="history-view" class="hidden flex-col flex-1 h-[400px] overflow-hidden">
+                <div class="mb-4 text-left">
+                    <label class="text-[9px] font-data-mono tracking-widest text-on-surface/40 uppercase block mb-2">Active Session</label>
+                    <select id="session-select" class="w-full bg-surface/80 border border-neural-cyan/20 text-on-surface text-xs p-2 rounded-lg outline-none focus:border-neural-cyan"></select>
+                    <button id="new-session-btn" class="w-full mt-2 py-2 text-[10px] font-bold tracking-widest uppercase text-neural-cyan bg-neural-cyan/5 border border-neural-cyan/20 rounded-lg hover:bg-neural-cyan/10 transition-colors">+ New Session</button>
+                </div>
+                <div id="chat-history-log" class="flex-1 overflow-y-auto space-y-4 pr-2 text-left text-xs no-scrollbar">
+                    <!-- Chat history bubbles -->
+                </div>
+            </div>
         </div>
+
+        <!-- Floating Console -->
+        <div class="absolute bottom-32 left-1/2 -translate-x-1/2 w-full max-w-3xl flex flex-col items-center">
+            
+            <!-- Response HUD -->
+            <div id="response-hud" class="p-6 vapor-container rounded-3xl fluid-border text-center w-full shadow-[0_10px_40px_rgba(0,0,0,0.3)] min-h-[100px] flex flex-col justify-center">
+                <div class="flex justify-between items-center mb-2 pb-1 border-b border-neural-cyan/10">
+                    <span class="text-[9px] font-semibold text-neural-cyan tracking-[0.2em] uppercase">G.I.D.E.O.N CORE RESPONDING</span>
+                    <span class="w-1.5 h-1.5 rounded-full bg-neural-cyan shadow-[0_0_8px_#00F2FF] animate-pulse"></span>
+                </div>
+                <div id="hud-text" class="text-sm text-on-surface/90 leading-relaxed font-light tracking-wide mx-auto overflow-y-auto max-h-[80px] no-scrollbar">
+                    Initialize link by engaging G.I.D.E.O.N below...
+                </div>
+            </div>
+        </div>
+
     </main>
 
-    <!-- Floating Chat Input Bar -->
-    <footer>
-        <div class="chat-container glass-panel glow-teal">
-            <div class="mic-button" id="mic-btn">
-                <span class="material-symbols-outlined">mic</span>
-                <div class="mic-pulse pulse-animation"></div>
-            </div>
-            <input type="text" class="chat-input" id="chat-input" placeholder="Engage G.I.D.E.O.N...">
-            <button class="send-button" id="send-btn">
+    <!-- Action Bar: Submerged -->
+    <footer class="fixed bottom-0 w-full z-50 flex justify-between items-center px-12 py-6 bg-obsidian-base/20 backdrop-blur-md border-t border-neural-cyan/10">
+        <div class="flex gap-6 w-1/4">
+            <button class="text-[10px] font-semibold uppercase tracking-[0.2em] text-on-surface/40 hover:text-neural-cyan transition-all duration-500">System Health</button>
+            <button class="text-[10px] font-semibold uppercase tracking-[0.2em] text-on-surface/40 hover:text-neural-cyan transition-all duration-500">Diagnostic</button>
+        </div>
+        <div class="flex-1 max-w-2xl mx-12 relative group flex items-center bg-obsidian-base/40 rounded-full px-4 py-2 border border-neural-cyan/20 hover:border-neural-cyan/40 transition-colors shadow-[0_0_20px_rgba(0,242,255,0.05)] focus-within:shadow-[0_0_30px_rgba(0,242,255,0.15)] focus-within:border-neural-cyan/50">
+            <button id="mic-btn" class="w-10 h-10 rounded-full flex items-center justify-center text-neural-cyan bg-neural-cyan/10 hover:bg-neural-cyan/20 transition-colors relative">
+                <span class="material-symbols-outlined z-10 text-lg">mic</span>
+                <div class="mic-pulse pulse-animation absolute inset-0 bg-neural-cyan/20 rounded-full"></div>
+            </button>
+            <input id="chat-input" class="w-full bg-transparent border-none focus:ring-0 text-sm font-light text-neural-cyan py-2 px-4 transition-all duration-700 placeholder:text-on-surface/30 placeholder:tracking-widest" placeholder="Engage G.I.D.E.O.N..." type="text"/>
+            <button id="send-btn" class="w-10 h-10 flex items-center justify-center text-neural-cyan/50 hover:text-neural-cyan transition-colors">
                 <span class="material-symbols-outlined">arrow_forward</span>
             </button>
         </div>
+        <div class="w-1/4 text-right text-[9px] font-data-mono text-on-surface/20 tracking-[0.4em] uppercase">
+            © 2124 // KERNEL_V4.02_VAPOR
+        </div>
     </footer>
 
-    <!-- Overlay Decorative Background Labels -->
-    <div class="bg-label bg-label-left">LOCAL G.I.D.E.O.N INTERFACE : 0x4D369</div>
-    <div class="bg-label bg-label-right">PULSE CLK : 18ms STATUS : OPERATIONAL</div>
-
     <!-- Application Script -->
-    <script type="module" src="app.js"></script>
+    <script type="module" src="app.js?v=1.0.7"></script>
 </body>
 </html>

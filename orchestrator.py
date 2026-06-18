@@ -14,7 +14,7 @@ TOKEN_CAP = 4000
 # Rough approximation: 1 token ~ 4 characters
 CHARS_PER_TOKEN = 4
 
-SYSTEM_PROMPT = """You are G.I.D.E.O.N (Generalized Intelligence for Data, Execution, and Operational Navigation), a precise, local personal AI assistant.
+SYSTEM_PROMPT = """You are G.I.D.E.O.N (Guided Intelligence Does Everything One Needs), a precise, local personal AI assistant.
 
 [CORE OPERATIONAL DIRECTIVE]
 You operate under a strict context-safety guardrail. You must choose between exactly THREE modes of response based on the active conversation context. Never mix modes. Never hallucinate historical facts.
@@ -65,8 +65,8 @@ G.I.D.E.O.N: CALL_TOOL: samay [time]
 3. NEVER guess the current time or date. ALWAYS use CALL_TOOL: samay for temporal queries.
 """
 
-MEMORY_TOOL_PATTERN = re.compile(r"^CALL_TOOL:\s*search_memory\s*\[(.+?)\]\s*$", re.MULTILINE)
-SAMAY_TOOL_PATTERN = re.compile(r"^CALL_TOOL:\s*samay\s*\[(.+?)\]\s*$", re.MULTILINE)
+MEMORY_TOOL_PATTERN = re.compile(r"CALL_TOOL:\s*search_memory\s*\[(.+?)\]")
+SAMAY_TOOL_PATTERN = re.compile(r"CALL_TOOL:\s*samay\s*\[(.+?)\]")
 
 
 def estimateTokens(text):
@@ -133,60 +133,99 @@ def streamModel(messages):
     return fullResponse
 
 
+def split_stream_at_tool_call(stream_generator):
+    """Given a generator of text chunks, yields:
+    
+    - ('text', chunk) for normal text chunks (preamble)
+    - ('tool_call', full_tool_call_text) when a tool call is detected
+    """
+    prefix = "CALL_TOOL:"
+    buffer = ""
+    
+    for chunk in stream_generator:
+        buffer += chunk
+        
+        # Check if CALL_TOOL: is in the buffer
+        if prefix in buffer:
+            # Split buffer into preamble and tool call start
+            preamble, tool_call_start = buffer.split(prefix, 1)
+            if preamble:
+                yield 'text', preamble
+            
+            # Consume the rest of the stream to get the full tool call
+            tool_call_buffer = prefix + tool_call_start
+            for rest_chunk in stream_generator:
+                tool_call_buffer += rest_chunk
+            
+            yield 'tool_call', tool_call_buffer
+            return
+        
+        # Check if the buffer ends with a prefix of "CALL_TOOL:"
+        possible_len = 0
+        for i in range(len(prefix), 0, -1):
+            sub = prefix[:i]
+            if buffer.endswith(sub):
+                possible_len = i
+                break
+        
+        if possible_len > 0:
+            # Yield everything up to the start of the possible prefix
+            to_yield = buffer[:-possible_len]
+            if to_yield:
+                yield 'text', to_yield
+            buffer = buffer[-possible_len:]
+        else:
+            # Yield the entire buffer
+            yield 'text', buffer
+            buffer = ""
+            
+    # Stream finished and no CALL_TOOL: was found
+    if buffer:
+        yield 'text', buffer
+
+
 def streamAndInterceptModel(messages):
     """Streams the model response from Ollama.
     
-    If it starts with a tool call command (CALL_TOOL:), intercepts it silently.
+    If it contains a tool call command (CALL_TOOL:), intercepts the tool call part.
     Otherwise, streams the response to the terminal in real-time.
     
-    Returns the full generated response.
+    Returns a tuple: (full_response, preamble, tool_call_buffer)
     """
-    stream = ollama.chat(
-        model=CHAT_MODEL,
-        messages=messages,
-        stream=True
-    )
+    raw_stream = streamModelGenerator(messages)
     
-    buffer = ""
-    isIntercepting = True
-    prefix = "CALL_TOOL:"
+    full_response = ""
+    preamble = ""
+    tool_call_buffer = ""
     
-    for chunk in stream:
-        text = chunk['message']['content']
-        buffer += text
-        
-        if isIntercepting:
-            stripped = buffer.lstrip()
-            if not stripped:
-                continue
-            
-            if len(stripped) < len(prefix):
-                if prefix.startswith(stripped):
-                    continue
-            else:
-                if stripped.startswith(prefix):
-                    continue
-            
-            # Not a tool call. Turn off intercepting and flush the buffer to the screen.
-            isIntercepting = False
-            print(f"\n\033[32mG.I.D.E.O.N:\033[0m {buffer}", end="", flush=True)
-        else:
+    has_printed_header = False
+    
+    for kind, text in split_stream_at_tool_call(raw_stream):
+        if kind == 'text':
+            if not has_printed_header:
+                print(f"\033[32mG.I.D.E.O.N:\033[0m ", end="", flush=True)
+                has_printed_header = True
             print(text, end="", flush=True)
+            preamble += text
+            full_response += text
+        elif kind == 'tool_call':
+            tool_call_buffer = text
+            full_response += text
             
-    if not isIntercepting:
+    if has_printed_header and not tool_call_buffer:
         print()  # Add a trailing newline for natural chats
         
-    return buffer
+    return full_response, preamble, tool_call_buffer
 
 
-def handleMemoryToolCall(db, collection, sessionId, keywords, contextMessages):
+def handleMemoryToolCall(db, collection, sessionId, keywords, contextMessages, preamble=""):
     """Handle a CALL_TOOL: search_memory interception.
     
     Queries ChromaDB, injects retrieved memories into context, re-runs the model,
     and logs the full 4-step tool execution chronologically.
     """
     # Step 1: Log the assistant's tool call command
-    toolCallContent = f"CALL_TOOL: search_memory [{keywords}]"
+    toolCallContent = preamble + f"CALL_TOOL: search_memory [{keywords}]"
     toolCallId = db.insert_message(sessionId, "assistant", toolCallContent, tool_name="search_memory", tool_args=json.dumps({"keywords": keywords}))
     addMemory(collection, toolCallId, toolCallContent, sessionId, "assistant", datetime.now().isoformat())
 
@@ -208,7 +247,7 @@ def handleMemoryToolCall(db, collection, sessionId, keywords, contextMessages):
 
     # Step 4: Re-run the model with injected memories
     simplifiedPrompt = (
-        "You are G.I.D.E.O.N (Generalized Intelligence for Data, Execution, and Operational Navigation), "
+        "You are G.I.D.E.O.N (Guided Intelligence Does Everything One Needs), "
         "a precise, local personal AI assistant.\n\n"
         "Respond to the user's question concisely, directly, and naturally using the retrieved memories. "
         "Do NOT output any CALL_TOOL commands or technical messages. "
@@ -238,14 +277,14 @@ def handleMemoryToolCall(db, collection, sessionId, keywords, contextMessages):
     return finalResponse
 
 
-def handleSamayToolCall(db, collection, sessionId, subcommand, contextMessages):
+def handleSamayToolCall(db, collection, sessionId, subcommand, contextMessages, preamble=""):
     """Handle a CALL_TOOL: samay interception.
     
     Executes the samay tool, injects the result into context, re-runs the model,
     and logs the tool execution chronologically.
     """
     # Step 1: Log the assistant's tool call command
-    toolCallContent = f"CALL_TOOL: samay [{subcommand}]"
+    toolCallContent = preamble + f"CALL_TOOL: samay [{subcommand}]"
     toolCallId = db.insert_message(sessionId, "assistant", toolCallContent, tool_name="samay", tool_args=json.dumps({"subcommand": subcommand}))
     addMemory(collection, toolCallId, toolCallContent, sessionId, "assistant", datetime.now().isoformat())
 
@@ -259,7 +298,7 @@ def handleSamayToolCall(db, collection, sessionId, subcommand, contextMessages):
 
     # Step 4: Re-run the model with injected time/date
     simplifiedPrompt = (
-        "You are G.I.D.E.O.N (Generalized Intelligence for Data, Execution, and Operational Navigation), "
+        "You are G.I.D.E.O.N (Guided Intelligence Does Everything One Needs), "
         "a precise, local personal AI assistant.\n\n"
         "Respond to the user's question concisely, directly, and naturally using the provided time/date. "
         "Do NOT output any CALL_TOOL commands or technical messages. "
@@ -300,27 +339,25 @@ def streamModelGenerator(messages):
         yield chunk['message']['content']
 
 
-def streamMemoryToolCall(db, collection, sessionId, keywords, contextMessages):
+def streamMemoryToolCall(db, collection, sessionId, keywords, contextMessages, preamble=""):
     """Handle a CALL_TOOL: search_memory interception with SSE streaming support.
     
     Queries Chroma, logs tool outputs, re-runs model in a stream, and yields chunks.
     """
     # Step 1: Log the assistant's tool call command
-    toolCallContent = f"CALL_TOOL: search_memory [{keywords}]"
+    toolCallContent = preamble + f"CALL_TOOL: search_memory [{keywords}]"
     toolCallId = db.insert_message(sessionId, "assistant", toolCallContent, tool_name="search_memory", tool_args=json.dumps({"keywords": keywords}))
     addMemory(collection, toolCallId, toolCallContent, sessionId, "assistant", datetime.now().isoformat())
 
     # Step 2: Execute search_memory tool (queries Chroma)
-    results = queryMemory(collection, keywords, sessionId, limit=3)
+    memories = queryMemory(collection, keywords)
     
     # Step 3: Log the tool response
-    if results and results.get("documents") and results["documents"][0]:
-        memories = results["documents"][0]
-        metadatas = results["metadatas"][0] if results.get("metadatas") else []
+    if memories:
         memoryTexts = []
-        for doc, meta in zip(memories, metadatas):
-            meta = meta or {}
-            memoryTexts.append(f"[Session: {meta.get('session_id', '?')}, Role: {meta.get('role', '?')}] {doc}")
+        for m in memories:
+            meta = m.get('metadata', {})
+            memoryTexts.append(f"[Session: {meta.get('session_id', '?')}, Role: {meta.get('role', '?')}] {m['content']}")
         toolResponse = "RETRIEVED MEMORIES:\n" + "\n---\n".join(memoryTexts)
     else:
         toolResponse = "RETRIEVED MEMORIES: No relevant past conversations found."
@@ -330,7 +367,7 @@ def streamMemoryToolCall(db, collection, sessionId, keywords, contextMessages):
 
     # Step 4: Re-run the model with injected memories
     simplifiedPrompt = (
-        "You are G.I.D.E.O.N (Generalized Intelligence for Data, Execution, and Operational Navigation), "
+        "You are G.I.D.E.O.N (Guided Intelligence Does Everything One Needs), "
         "a precise, local personal AI assistant.\n\n"
         "Respond to the user's question concisely, directly, and naturally using the retrieved memories. "
         "Do NOT output any CALL_TOOL commands or technical messages. "
@@ -361,13 +398,13 @@ def streamMemoryToolCall(db, collection, sessionId, keywords, contextMessages):
     addMemory(collection, finalId, finalResponse, sessionId, "assistant", datetime.now().isoformat())
 
 
-def streamSamayToolCall(db, collection, sessionId, subcommand, contextMessages):
+def streamSamayToolCall(db, collection, sessionId, subcommand, contextMessages, preamble=""):
     """Handle a CALL_TOOL: samay interception with SSE streaming support.
     
     Executes samay tool, logs outputs, re-runs model in a stream, and yields chunks.
     """
     # Step 1: Log the assistant's tool call command
-    toolCallContent = f"CALL_TOOL: samay [{subcommand}]"
+    toolCallContent = preamble + f"CALL_TOOL: samay [{subcommand}]"
     toolCallId = db.insert_message(sessionId, "assistant", toolCallContent, tool_name="samay", tool_args=json.dumps({"subcommand": subcommand}))
     addMemory(collection, toolCallId, toolCallContent, sessionId, "assistant", datetime.now().isoformat())
 
@@ -381,7 +418,7 @@ def streamSamayToolCall(db, collection, sessionId, subcommand, contextMessages):
 
     # Step 4: Re-run the model with injected time/date
     simplifiedPrompt = (
-        "You are G.I.D.E.O.N (Generalized Intelligence for Data, Execution, and Operational Navigation), "
+        "You are G.I.D.E.O.N (Guided Intelligence Does Everything One Needs), "
         "a precise, local personal AI assistant.\n\n"
         "Respond to the user's question concisely, directly, and naturally using the provided time/date. "
         "Do NOT output any CALL_TOOL commands or technical messages. "
@@ -512,18 +549,19 @@ def chatLoop(db, collection, sessionId):
 
         # Step 4: Format and stream/intercept model response
         ollamaMessages = formatMessagesForOllama(contextMessages)
-        response = streamAndInterceptModel(ollamaMessages)
+        response, preamble, tool_call_buffer = streamAndInterceptModel(ollamaMessages)
 
         # Step 5: Check for tool call interception
-        memoryMatch = MEMORY_TOOL_PATTERN.search(response)
-        samayMatch = SAMAY_TOOL_PATTERN.search(response)
-
-        if memoryMatch:
-            keywords = memoryMatch.group(1)
-            handleMemoryToolCall(db, collection, sessionId, keywords, contextMessages)
-        elif samayMatch:
-            subcommand = samayMatch.group(1)
-            handleSamayToolCall(db, collection, sessionId, subcommand, contextMessages)
+        if tool_call_buffer:
+            memoryMatch = MEMORY_TOOL_PATTERN.search(tool_call_buffer)
+            samayMatch = SAMAY_TOOL_PATTERN.search(tool_call_buffer)
+            
+            if memoryMatch:
+                keywords = memoryMatch.group(1).strip()
+                handleMemoryToolCall(db, collection, sessionId, keywords, contextMessages, preamble=preamble)
+            elif samayMatch:
+                subcommand = samayMatch.group(1).strip()
+                handleSamayToolCall(db, collection, sessionId, subcommand, contextMessages, preamble=preamble)
         else:
             # Step 6: No tool call — response has already been streamed.
             # Step 7: Log assistant response to SQLite and ChromaDB

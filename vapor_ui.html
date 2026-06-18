@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>G.I.D.E.O.N. Neural Engine | Vapor Variant</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300;400;600;800&amp;family=JetBrains+Mono:wght@300;400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        :root {
+            --vapor-glow: rgba(0, 242, 255, 0.15);
+            --vapor-glow-intense: rgba(0, 242, 255, 0.4);
+        }
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+        }
+        @keyframes pulse-diffused {
+            0%, 100% { filter: blur(40px) opacity(0.3); }
+            50% { filter: blur(60px) opacity(0.5); }
+        }
+        @keyframes soft-glow {
+            0%, 100% { text-shadow: 0 0 10px rgba(0, 242, 255, 0.2); }
+            50% { text-shadow: 0 0 25px rgba(0, 242, 255, 0.6); }
+        }
+        .vapor-container {
+            background: radial-gradient(circle at top left, rgba(255, 255, 255, 0.03), transparent);
+            backdrop-filter: blur(12px);
+        }
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .text-glow {
+            animation: soft-glow 4s ease-in-out infinite;
+        }
+        .fluid-border {
+            border: 1px solid rgba(0, 242, 255, 0.1);
+            transition: border 0.5s ease;
+        }
+        .fluid-border:hover {
+            border: 1px solid rgba(0, 242, 255, 0.3);
+        }
+        .bg-mesh {
+            background-image: radial-gradient(at 0% 0%, hsla(180,100%,50%,0.05) 0, transparent 50%), 
+                              radial-gradient(at 100% 100%, hsla(260,100%,50%,0.05) 0, transparent 50%);
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                "primary": "#e1fdff",
+                "neural-cyan": "#00F2FF",
+                "obsidian-base": "#050508",
+                "surface": "#131317",
+                "on-surface": "#e5e1e7",
+                "glass-stroke": "rgba(0, 242, 255, 0.1)",
+                "pulse-emerald": "#00FF9D",
+                "system-red": "#FF2D55"
+              },
+              "fontFamily": {
+                "body-md": ["Hanken Grotesk"],
+                "headline-xl": ["Hanken Grotesk"],
+                "label-xs": ["JetBrains Mono"],
+                "data-mono": ["JetBrains Mono"]
+              }
+            },
+          },
+        }
+    </script>
+</head>
+<body class="bg-obsidian-base text-on-surface font-body-md selection:bg-neural-cyan/30 overflow-hidden bg-mesh">
+<!-- Immersive Background Layer -->
+
+<div class="fixed inset-0 pointer-events-none z-10 bg-gradient-to-b from-transparent via-obsidian-base/10 to-obsidian-base/60"></div>
+<!-- TopNavBar: Minimalist & Borderless -->
+<header class="fixed top-0 w-full z-50 flex justify-between items-center px-12 h-20 bg-transparent">
+<div class="flex items-center gap-12">
+<span class="font-headline-xl text-2xl font-extrabold tracking-[-0.05em] text-neural-cyan text-glow">G.I.D.E.O.N.</span>
+<nav class="hidden md:flex gap-8">
+<a class="text-neural-cyan text-xs font-semibold tracking-[0.2em] uppercase opacity-100" href="#">Neural Engine</a>
+<a class="text-on-surface/50 text-xs font-medium tracking-[0.2em] uppercase hover:text-neural-cyan transition-all duration-500" href="#">System Metrics</a>
+<a class="text-on-surface/50 text-xs font-medium tracking-[0.2em] uppercase hover:text-neural-cyan transition-all duration-500" href="#">Archive</a>
+</nav>
+</div>
+<div class="flex items-center gap-6">
+<div class="flex gap-1">
+<button class="p-2 text-on-surface/40 hover:text-neural-cyan transition-colors duration-500"><span class="material-symbols-outlined text-sm">sensors</span></button>
+<button class="p-2 text-on-surface/40 hover:text-neural-cyan transition-colors duration-500"><span class="material-symbols-outlined text-sm">terminal</span></button>
+</div>
+<div class="w-9 h-9 rounded-full p-[1px] bg-gradient-to-br from-neural-cyan/40 to-transparent">
+<img class="w-full h-full object-cover rounded-full grayscale hover:grayscale-0 transition-all duration-700" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAjIFAy5iwLiZVhLqjczxuUwlZOC7iMvPsI5hijcJaCKs_e6VIDoT-WgMhiXq3DsXwASppYeI2PYuPjEaP_-0yOMIWmn6vrmai3uUYqtNXW6XxoBDKtcMSmUXhTLzCyLeRNfq74XoN5LNhr6rxp4CERnRLDysc_yM444BtwycAvQxJACr__DHLXVn-TUGFrpKSQLgyj8GQ9Bafq6UC9IgXDJX_vJ0XZRtoEG1ULDv1Z7USnZase0rxzr6VQgXE_0BdM687jda-sLXmm"/>
+</div>
+</div>
+</header>
+<!-- SideNavBar: Soft Vertical Strip -->
+<aside class="fixed left-0 top-0 h-full z-40 flex flex-col py-24 bg-transparent w-20 group items-center">
+<nav class="flex flex-col gap-10">
+<button class="text-neural-cyan relative">
+<span class="material-symbols-outlined text-[20px]" style="font-variation-settings: 'FILL' 1;">psychology</span>
+<div class="absolute -inset-2 bg-neural-cyan/10 rounded-full blur-md"></div>
+</button>
+<button class="text-on-surface/30 hover:text-neural-cyan transition-all duration-500"><span class="material-symbols-outlined text-[20px]">monitoring</span></button>
+<button class="text-on-surface/30 hover:text-neural-cyan transition-all duration-500"><span class="material-symbols-outlined text-[20px]">database</span></button>
+<button class="text-on-surface/30 hover:text-neural-cyan transition-all duration-500"><span class="material-symbols-outlined text-[20px]">tune</span></button>
+</nav>
+<div class="mt-auto flex flex-col gap-8 items-center">
+<button class="text-on-surface/20 hover:text-pulse-emerald transition-colors"><span class="material-symbols-outlined text-[18px]">sync_alt</span></button>
+<button class="text-on-surface/20 hover:text-system-red transition-colors"><span class="material-symbols-outlined text-[18px]">security</span></button>
+</div>
+</aside>
+<!-- Main Canvas -->
+<main class="relative z-20 ml-20 h-screen flex items-center justify-center overflow-hidden">
+<!-- Left Atmospheric Stats -->
+<div class="absolute left-12 top-1/2 -translate-y-1/2 space-y-12 w-56">
+<div class="opacity-80 group">
+<p class="text-[10px] font-data-mono tracking-[0.3em] text-on-surface/40 mb-4 uppercase">Engine Load</p>
+<div class="flex items-end gap-2 h-16">
+<div class="flex-1 bg-neural-cyan/5 rounded-full relative overflow-hidden h-full">
+<div class="absolute bottom-0 w-full bg-gradient-to-t from-neural-cyan/30 to-neural-cyan/60 transition-all duration-1000" style="height: 27%"></div>
+</div>
+<div class="flex-1 bg-neural-cyan/5 rounded-full relative overflow-hidden h-full">
+<div class="absolute bottom-0 w-full bg-gradient-to-t from-neural-cyan/30 to-neural-cyan/60 transition-all duration-1000" style="height: 42%"></div>
+</div>
+<div class="flex-1 bg-neural-cyan/5 rounded-full relative overflow-hidden h-full">
+<div class="absolute bottom-0 w-full bg-gradient-to-t from-neural-cyan/30 to-neural-cyan/60 transition-all duration-1000" style="height: 18%"></div>
+</div>
+</div>
+<p class="mt-3 text-[10px] font-data-mono text-neural-cyan/60">UPLINK_01: NOMINAL</p>
+</div>
+</div>
+<!-- Central Integrated Hero -->
+<div class="relative w-[600px] h-[600px] flex items-center justify-center">
+<!-- Diffused Atmospheric Glows -->
+<div class="absolute inset-0 bg-neural-cyan/5 rounded-full blur-[120px] animate-[pulse-diffused_8s_infinite]"></div>
+<div class="relative group">
+<!-- Peripheral Rings -->
+<div class="absolute inset-[-40px] rounded-full border border-neural-cyan/5 transition-all duration-1000 group-hover:inset-[-60px] group-hover:border-neural-cyan/10"></div>
+<div class="absolute inset-[-20px] rounded-full border border-neural-cyan/10 transition-all duration-700 group-hover:inset-[-30px]"></div>
+<!-- Main Core Visualization -->
+<div class="w-96 h-96 rounded-full overflow-hidden relative shadow-[0_0_80px_rgba(0,242,255,0.1)]">
+<img class="w-full h-full object-cover opacity-80 scale-110 group-hover:scale-100 transition-transform duration-[3s]" data-alt="A central AI core represented as a highly intricate 3D wireframe head and neural net sphere glowing in brilliant cyan." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDmX7aImZxr-hbpQY1OHRFV0bHbOtqaYV4IlarDySTEP2TrzAPSJ_yZgVgrrP6QFJxu71WNXQ1sIgpZU_nTNgfkxhkf24KKejdwyG8hvQSPUUe6Y8iaxkT4CR714T-t76MCxAgE2AkzjMFRYi7at4xrdYVIsqfjhhMlt1jJ7ZZYeHVRCSo6goZGFovCwh4RV-8X3rlwBQdgS7tkgCVfEWLltbt7clAP_n6mbqHSOvnyMT3miT8WIljeeoSi_c-TCpnRaDBWQzl6KZXl"/>
+<div class="absolute inset-0 bg-gradient-to-t from-obsidian-base/80 via-transparent to-transparent"></div>
+</div>
+<div class="absolute -bottom-16 left-1/2 -translate-x-1/2 text-center">
+<p class="font-headline-xl text-lg font-light tracking-[0.5em] text-neural-cyan/70 uppercase">Core Status</p>
+<p class="text-[10px] font-data-mono text-on-surface/40 mt-1">SYSTEM_READY_0.9.1</p>
+</div>
+</div>
+</div>
+<!-- Right Atmospheric Metrics -->
+<div class="absolute right-12 top-1/2 -translate-y-1/2 space-y-12 w-56 text-right">
+<div>
+<p class="text-[10px] font-data-mono tracking-[0.3em] text-on-surface/40 mb-1 uppercase">Memory Array</p>
+<p class="text-3xl font-light text-neural-cyan/80">6.0<span class="text-sm opacity-30 font-data-mono">GB</span></p>
+</div>
+<div class="opacity-60">
+<p class="text-[10px] font-data-mono tracking-[0.3em] text-on-surface/40 mb-1 uppercase">Flux Density</p>
+<p class="text-3xl font-light text-neural-cyan/80">840<span class="text-sm opacity-30 font-data-mono">MBPS</span></p>
+</div>
+<div class="flex items-center justify-end gap-3 pt-4 border-t border-neural-cyan/5">
+<span class="text-[9px] font-data-mono text-pulse-emerald/60 tracking-widest uppercase">Drive: Stable</span>
+<div class="w-1.5 h-1.5 rounded-full bg-pulse-emerald shadow-[0_0_8px_#00FF9D]"></div>
+</div>
+</div>
+<!-- Floating Console -->
+<div class="absolute bottom-24 left-1/2 -translate-x-1/2 w-full max-w-3xl">
+<div class="p-8 vapor-container rounded-3xl fluid-border text-center">
+<div class="text-sm text-on-surface/80 leading-relaxed font-light tracking-wide max-w-2xl mx-auto italic">
+                "I've updated my neural architecture to integrate your last instruction: G.I.D.E.O.N = Guided Intelligence Does Everything One Needs. Memory persistence confirmed."
+            </div>
+<div class="mt-6 flex justify-center items-center gap-4 text-[9px] font-data-mono text-on-surface/30 tracking-[0.3em] uppercase">
+<span class="w-1 h-1 rounded-full bg-neural-cyan/30"></span>
+                Input Processor Active
+                <span class="w-1 h-1 rounded-full bg-neural-cyan/30"></span>
+</div>
+</div>
+</div>
+</main>
+<!-- Action Bar: Submerged -->
+<footer class="fixed bottom-0 w-full z-50 flex justify-between items-center px-12 py-6 bg-obsidian-base/20 backdrop-blur-md">
+<div class="flex gap-6">
+<button class="text-[10px] font-semibold uppercase tracking-[0.2em] text-on-surface/40 hover:text-neural-cyan transition-all duration-500">System Health</button>
+<button class="text-[10px] font-semibold uppercase tracking-[0.2em] text-on-surface/40 hover:text-neural-cyan transition-all duration-500">Optimization</button>
+<button class="text-[10px] font-semibold uppercase tracking-[0.2em] text-on-surface/40 hover:text-neural-cyan transition-all duration-500">Diagnostic</button>
+</div>
+<div class="flex-1 max-w-md mx-12 relative group">
+<input class="w-full bg-transparent border-b border-on-surface/10 focus:border-neural-cyan/40 focus:ring-0 text-sm font-light text-neural-cyan py-3 transition-all duration-700 placeholder:text-on-surface/20 placeholder:tracking-widest" placeholder="TYPE_COMMAND_HERE..." type="text"/>
+<div class="absolute right-0 bottom-3 w-1 h-1 bg-neural-cyan/40 group-focus-within:bg-neural-cyan animate-pulse"></div>
+</div>
+<div class="text-[9px] font-data-mono text-on-surface/20 tracking-[0.4em] uppercase">
+        © 2124 // KERNEL_V4.02_VAPOR
+    </div>
+</footer>
+<script>
+    // Subtle parallax effect on the central core
+    document.addEventListener('mousemove', (e) => {
+        const x = (window.innerWidth / 2 - e.pageX) / 50;
+        const y = (window.innerHeight / 2 - e.pageY) / 50;
+        const core = document.querySelector('.group .w-96');
+        if(core) core.style.transform = `translate(${x}px, ${y}px)`;
+    });
+
+    // Simulated metric fluctuations
+    setInterval(() => {
+        const bars = document.querySelectorAll('.bg-gradient-to-t');
+        bars.forEach(bar => {
+            const currentH = parseInt(bar.style.height);
+            const delta = (Math.random() - 0.5) * 10;
+            const newH = Math.max(10, Math.min(90, currentH + delta));
+            bar.style.height = newH + '%';
+        });
+    }, 2000);
+</script>
+</body></html>

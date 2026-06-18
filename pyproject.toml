@@ -6,5 +6,7 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "chromadb",
+    "edge-tts>=7.2.8",
     "ollama",
+    "psutil>=7.2.2",
 ]
