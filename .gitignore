@@ -1,6 +1,32 @@
-.venv
-__pycache__
-core/__pycache__/
-GideonLog.db
-gideon_knowledge_roadmap.md.resolved
+# Databases
+gideon.db
+gideon.db-shm
+gideon.db-wal
+.chromadb/
+
+# Virtual Environments
+.venv/
+venv/
+env/
+ENV/
+
+# Python Cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Local/Environment configs
 .env
+.python-version
+
+# Editor & System Files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Agent/Orchestrator Caches/Logs
+.macco/
+macco_analysis.md
