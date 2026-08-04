@@ -155,7 +155,7 @@ WOLFRAM_ALPHA_APP_ID = _env("GIDEON_WOLFRAM_APP_ID", "")
 # ---------------------------------------------------------------------------
 # Tools that change machine state need explicit user confirmation in the UI
 # before the orchestrator will execute them.
-CONFIRM_REQUIRED_TOOLS = {"launch_app"}
+CONFIRM_REQUIRED_TOOLS = {"launch_app", "run_terminal_command"}
 REQUIRE_CONFIRMATION = _env("GIDEON_REQUIRE_CONFIRMATION", "0") == "1"
 
 # Small models call tools they were never asked to call. Observed: "say thanks
@@ -164,6 +164,92 @@ REQUIRE_CONFIRMATION = _env("GIDEON_REQUIRE_CONFIRMATION", "0") == "1"
 # is on, the tool schemas are only offered for messages with operational
 # intent — which also removes ~1200 tokens of prefill from ordinary chat.
 TOOL_GATING = _env("GIDEON_TOOL_GATING", "1") == "1"
+
+# ---------------------------------------------------------------------------
+#  Terminal execution safety
+# ---------------------------------------------------------------------------
+# Commands whose damage cannot be undone. Matched case-insensitively against
+# every segment of a chained command line, so `dir && format c:` is caught.
+# This is a backstop against a wrong tool call or injected instruction, not a
+# sandbox — it blocks the catastrophic tail, nothing more.
+DESTRUCTIVE_COMMAND_PATTERNS = [
+    r"\bformat\s+[a-z]:",                     # format c:
+    r"\bdiskpart\b",
+    r"\bmkfs(\.\w+)?\b",
+    r"\brm\s+(-\w*\s+)*-\w*[rf]",             # rm -rf / rm -fr
+    r"\bdel\s+.*[/-][sq]\b",                  # del /s /q
+    r"\brmdir\s+.*[/-]s\b",
+    r"\bremove-item\b.*-recurse.*-force",
+    r"\bformat-volume\b",
+    r"\bclear-disk\b",
+    r"\breg\s+delete\b",
+    r"\bremove-itemproperty\b",
+    r"\bcipher\s+/w",                          # secure wipe
+    r"\bshutdown\b",
+    r"\brestart-computer\b",
+    r"\bstop-computer\b",
+    r"\bbcdedit\b",
+    r"\bvssadmin\s+delete\b",                  # shadow copy deletion
+    r"\btakeown\b.*[/-]r",
+    r"\bicacls\b.*[/-]reset",
+    r"\bnet\s+user\b.*[/-]delete",
+    r":\(\)\s*\{.*\};\s*:",                    # fork bomb
+    r"\b(curl|wget|iwr|invoke-webrequest)\b.*\|\s*(sh|bash|iex|powershell)",
+    r"\biex\b.*\bdownloadstring\b",            # download-and-execute
+]
+
+# Shell operators that chain a second command onto the first.
+COMMAND_CHAIN_SPLIT = r"&&|\|\||[;&|\n]"
+
+ENFORCE_COMMAND_DENYLIST = _env("GIDEON_COMMAND_DENYLIST", "1") == "1"
+TERMINAL_TIMEOUT_SECONDS = _env_int("GIDEON_TERMINAL_TIMEOUT", 30)
+
+# ---------------------------------------------------------------------------
+#  Per-channel tool policy
+# ---------------------------------------------------------------------------
+# Telegram is a remote channel: messages traverse Telegram's servers and the
+# only access control is a user-ID allowlist. It therefore does not get tools
+# that execute code or launch programs, regardless of what the model picks.
+CHANNEL_BLOCKED_TOOLS: dict[str, set[str]] = {
+    "telegram": {"run_terminal_command", "launch_app"},
+}
+
+# ---------------------------------------------------------------------------
+#  API authentication
+# ---------------------------------------------------------------------------
+# Shared secret for state-changing endpoints. Generated on first run and
+# written to .env so the frontend and server agree across restarts.
+API_TOKEN_HEADER = "X-Gideon-Token"
+
+
+def _load_or_create_api_token() -> str:
+    token = _env("GIDEON_API_TOKEN", "")
+    if token:
+        return token
+
+    import secrets
+
+    token = secrets.token_urlsafe(32)
+    env_file = BASE_DIR / ".env"
+    try:
+        with env_file.open("a", encoding="utf-8") as handle:
+            handle.write(f"\nGIDEON_API_TOKEN={token}\n")
+    except OSError:
+        # Non-fatal: the token still works for this process.
+        pass
+    os.environ["GIDEON_API_TOKEN"] = token
+    return token
+
+
+API_TOKEN = _load_or_create_api_token()
+
+# Only these Host header values are served. Blocks DNS rebinding, where a
+# hostile page resolves its own domain to 127.0.0.1 to reach this server.
+ALLOWED_HOSTS = {
+    h.strip().lower()
+    for h in _env("GIDEON_ALLOWED_HOSTS", f"localhost:{PORT},127.0.0.1:{PORT},localhost,127.0.0.1").split(",")
+    if h.strip()
+}
 
 
 # ---------------------------------------------------------------------------

@@ -95,8 +95,11 @@ class GideonTelegramDaemon:
             await update.message.reply_text("Access denied: Unauthorized Telegram User ID.")
             return
 
+        import random
+
+        greeting_title = random.choice(["boss", "sir"])
         await update.message.reply_text(
-            "Greetings! G.I.D.E.O.N online and synchronized. How may I assist you today, boss?"
+            f"Greetings! G.I.D.E.O.N online and synchronized. How may I assist you today {greeting_title}?"
         )
 
     async def _handle_message(self, update: Any, context: Any) -> None:
@@ -134,6 +137,7 @@ class GideonTelegramDaemon:
                 chroma,
                 session_id,
                 user_text,
+                "telegram",
             )
 
             if not response_text:

@@ -139,3 +139,14 @@ def test_question_and_exclamation_terminate_sentences():
 
     sentences, _ = split_ready_sentences("Shall I proceed with that? Awaiting orders")
     assert sentences == ["Shall I proceed with that?"]
+
+
+def test_search_uses_the_maintained_ddgs_package():
+    """duckduckgo_search is abandoned: it imports fine but returns zero
+    results for most queries, with no exception to signal the failure."""
+    from tools.web_and_clipboard import DDGS
+
+    assert DDGS is not None
+    assert DDGS.__module__.startswith("ddgs"), (
+        "falling back to the deprecated duckduckgo_search package"
+    )

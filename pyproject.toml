@@ -7,7 +7,9 @@ requires-python = ">=3.13"
 dependencies = [
     "chromadb",
     "comtypes>=1.4.16",
-    "duckduckgo-search>=8.1.1",
+    # Renamed from duckduckgo-search. The old package still imports but
+    # silently returns zero results for most queries.
+    "ddgs>=9.0",
     "edge-tts>=7.2.8",
     # fastapi/uvicorn/pydantic were only present transitively via chromadb.
     # Declared explicitly so a chromadb bump cannot break the web server.

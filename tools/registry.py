@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from config import get_logger
+from config import CHANNEL_BLOCKED_TOOLS, get_logger
 from tools.desktop import get_system_status, launch_app, search_files
 from tools.finance import get_financial_data
 from tools.geolocation import get_ip_info
@@ -21,6 +21,7 @@ from tools.media_and_docs import control_media, control_volume, read_document
 from tools.news import get_hackernews
 from tools.reminders import list_reminders, set_reminder
 from tools.samay import execute as samay_execute
+from tools.terminal import run_terminal_command
 from tools.weather import get_weather
 from tools.web_and_clipboard import get_clipboard, search_web, set_clipboard
 from tools.yt_music import play_youtube_music, search_youtube_music
@@ -333,6 +334,27 @@ OLLAMA_TOOLS: list[dict[str, Any]] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "run_terminal_command",
+            "description": "Execute a shell command line (PowerShell/CMD) on the host system and capture stdout/stderr output. Call when user explicitly asks to run a CLI command, install a package, check git status, or execute terminal commands.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "command": {
+                        "type": "string",
+                        "description": "The exact CLI command string to execute (e.g., 'git status', 'pip list', 'dir').",
+                    },
+                    "cwd": {
+                        "type": "string",
+                        "description": "Optional working directory path.",
+                    },
+                },
+                "required": ["command"],
+            },
+        },
+    },
 ]
 
 # Derived from the schemas so the two can never drift apart.
@@ -448,6 +470,13 @@ def _handle_query_wolfram_alpha(args: dict[str, Any]) -> str:
     return query_wolfram_alpha(_first_arg(args, "query", "q", "input"))
 
 
+def _handle_run_terminal_command(args: dict[str, Any]) -> str:
+    return run_terminal_command(
+        _first_arg(args, "command", "cmd", "line"),
+        cwd=_first_arg(args, "cwd", "dir", default=None),
+    )
+
+
 _HANDLERS: dict[str, Callable[[dict[str, Any]], str]] = {
     "get_system_status": _handle_system_status,
     "set_reminder": _handle_set_reminder,
@@ -468,14 +497,49 @@ _HANDLERS: dict[str, Callable[[dict[str, Any]], str]] = {
     "get_hackernews": _handle_get_hackernews,
     "get_ip_info": _handle_get_ip_info,
     "query_wolfram_alpha": _handle_query_wolfram_alpha,
+    "run_terminal_command": _handle_run_terminal_command,
 }
 
 
+def tools_for_channel(channel: str) -> list[dict[str, Any]]:
+    """Schemas this channel is permitted to see.
+
+    Withholding the schema is stronger than refusing the call: the model
+    cannot pick a tool it was never shown.
+    """
+    blocked = CHANNEL_BLOCKED_TOOLS.get(channel, set())
+    if not blocked:
+        return OLLAMA_TOOLS
+    return [t for t in OLLAMA_TOOLS if t["function"]["name"] not in blocked]
+
+
 def dispatch_tool_call(
-    tool_name: str, arguments: dict[str, Any], chroma_collection: Any = None
+    tool_name: str,
+    arguments: dict[str, Any],
+    chroma_collection: Any = None,
+    channel: str = "web",
 ) -> str:
     """Route a tool call to its handler and return a string result."""
     name = (tool_name or "").strip().lower()
+
+    # Second line of defence: even if a schema leaked into the prompt, a
+    # blocked channel cannot execute the tool.
+    if name in CHANNEL_BLOCKED_TOOLS.get(channel, set()):
+        log.warning("Tool %r blocked for channel %r", name, channel)
+        return (
+            f"The '{name}' tool is not available over {channel}. "
+            f"Ask me from the desktop interface instead."
+        )
+
+    if name == "run_terminal_command":
+        if not isinstance(arguments, dict):
+            arguments = {}
+        return run_terminal_command(
+            _first_arg(arguments, "command", "cmd", "line"),
+            cwd=_first_arg(arguments, "cwd", "dir", default=None),
+            channel=channel,
+        )
+
     handler = _HANDLERS.get(name)
 
     if handler is None:

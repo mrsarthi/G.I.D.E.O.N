@@ -97,6 +97,28 @@ class DatabaseManager:
                 ON reminders(status, remind_at)
             """)
 
+            # Durable record of every shell command attempted, including the
+            # ones that were refused. Log files and the event bus are both
+            # ephemeral; for a feature that runs arbitrary code you want to be
+            # able to answer "what did it run, when, from where" afterwards.
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS command_audit (
+                    audit_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    command TEXT NOT NULL,
+                    cwd TEXT,
+                    channel TEXT DEFAULT 'unknown',
+                    allowed INTEGER NOT NULL,
+                    block_reason TEXT,
+                    return_code INTEGER,
+                    output_excerpt TEXT,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_command_audit_time
+                ON command_audit(created_at DESC)
+            """)
+
             defaults = [
                 ("user_name", "boss"),
                 ("addressing_style", "boss or sir"),
@@ -271,6 +293,52 @@ class DatabaseManager:
                 "UPDATE reminders SET status = 'completed' WHERE reminder_id = ?",
                 (reminder_id,),
             )
+
+    # ------------------------------------------------------------------
+    #  Command audit
+    # ------------------------------------------------------------------
+    def record_command(
+        self,
+        command: str,
+        cwd: str | None,
+        channel: str,
+        allowed: bool,
+        block_reason: str | None = None,
+        return_code: int | None = None,
+        output_excerpt: str | None = None,
+    ) -> int:
+        """Append one shell-command attempt to the audit trail."""
+        with self._lock, self.conn:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                """INSERT INTO command_audit
+                   (command, cwd, channel, allowed, block_reason, return_code, output_excerpt)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    command,
+                    cwd,
+                    channel,
+                    1 if allowed else 0,
+                    block_reason,
+                    return_code,
+                    (output_excerpt or "")[:500] or None,
+                ),
+            )
+            return cursor.lastrowid
+
+    def get_command_audit(self, limit: int = 50) -> list[dict]:
+        with self._lock:
+            rows = self.conn.execute(
+                """SELECT audit_id, command, cwd, channel, allowed, block_reason,
+                          return_code, output_excerpt, created_at
+                   FROM command_audit ORDER BY audit_id DESC LIMIT ?""",
+                (limit,),
+            ).fetchall()
+        keys = (
+            "audit_id", "command", "cwd", "channel", "allowed", "block_reason",
+            "return_code", "output_excerpt", "created_at",
+        )
+        return [dict(zip(keys, r)) for r in rows]
 
     # ------------------------------------------------------------------
     #  Maintenance

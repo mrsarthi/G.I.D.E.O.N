@@ -18,6 +18,7 @@ import asyncio
 import json
 import os
 import re
+import secrets
 import time
 import uuid
 import wave
@@ -27,16 +28,19 @@ from datetime import datetime
 from typing import Iterator, Optional
 
 import psutil
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 import memory
 import orchestrator
 from config import (
+    ALLOWED_HOSTS,
     ALLOW_CLOUD_TTS,
+    API_TOKEN,
+    API_TOKEN_HEADER,
     AUDIO_DIR,
     AUDIO_RETENTION_HOURS,
     CORS_ORIGINS,
@@ -213,7 +217,10 @@ async def reminder_daemon():
             due = await asyncio.to_thread(db.get_due_reminders)
             for reminder_id, text, remind_at in due:
                 await asyncio.to_thread(db.mark_reminder_completed, reminder_id)
-                spoken = f"Reminder, boss: {text}"
+                import random
+
+                honorific = random.choice(["boss", "sir"])
+                spoken = f"Reminder {honorific}: {text}"
                 audio_url = await asyncio.to_thread(generate_tts_audio, spoken, "reminder")
                 bus.publish(
                     "reminder",
@@ -271,6 +278,21 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="G.I.D.E.O.N API Server", lifespan=lifespan)
 
+@app.middleware("http")
+async def validate_host_header(request: Request, call_next):
+    """Reject requests whose Host is not a loopback name.
+
+    DNS rebinding works by pointing an attacker-controlled domain at
+    127.0.0.1; the browser then treats the attacker page as same-origin, so
+    CORS does not help. Checking Host does.
+    """
+    host = (request.headers.get("host") or "").lower()
+    if host and host not in ALLOWED_HOSTS:
+        log.warning("Rejected request with unexpected Host header: %r", host)
+        return JSONResponse(status_code=400, content={"detail": "Invalid Host header."})
+    return await call_next(request)
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
@@ -292,6 +314,49 @@ class SessionCreate(BaseModel):
 class ProfileUpdateRequest(BaseModel):
     key: str
     value: str
+
+
+class TerminalExecuteRequest(BaseModel):
+    command: str
+    cwd: Optional[str] = None
+
+
+def require_api_token(request: Request) -> None:
+    """Gate state-changing endpoints behind the shared secret.
+
+    Without this, any process on the machine could POST to 127.0.0.1 and get
+    a shell. The token lives in .env and is handed to the frontend by
+    serve_index below.
+    """
+    supplied = request.headers.get(API_TOKEN_HEADER, "")
+    if not secrets.compare_digest(supplied, API_TOKEN):
+        log.warning(
+            "Rejected unauthenticated %s from %s",
+            request.url.path,
+            request.client.host if request.client else "unknown",
+        )
+        raise HTTPException(status_code=401, detail="Missing or invalid API token.")
+
+
+@app.post("/api/terminal/execute")
+async def execute_terminal_cmd(req: TerminalExecuteRequest, request: Request):
+    """Execute a manual CLI command from the Terminal HUD drawer."""
+    require_api_token(request)
+
+    cmd = req.command.strip()
+    if not cmd:
+        raise HTTPException(status_code=400, detail="Command string cannot be empty")
+    from tools.terminal import run_terminal_command
+
+    result = await asyncio.to_thread(run_terminal_command, cmd, req.cwd, channel="web")
+    return {"status": "ok", "command": cmd, "output": result}
+
+
+@app.get("/api/terminal/audit")
+def terminal_audit(request: Request, limit: int = 50):
+    """Recent shell-command history, including refused attempts."""
+    require_api_token(request)
+    return get_db().get_command_audit(limit=min(max(limit, 1), 200))
 
 
 # ---------------------------------------------------------------------------
@@ -575,6 +640,23 @@ AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 if FRONTEND_DIR.is_dir():
+
+    @app.get("/", response_class=HTMLResponse)
+    def serve_index():
+        """Serve index.html with the API token injected.
+
+        The token reaches the page only through this same-origin route, so a
+        cross-origin attacker cannot read it, and the Host check above stops
+        DNS rebinding from making itself same-origin.
+        """
+        html = (FRONTEND_DIR / "index.html").read_text(encoding="utf-8")
+        injected = f'<script>window.GIDEON_API_TOKEN = "{API_TOKEN}";</script>'
+        if "</head>" in html:
+            html = html.replace("</head>", injected + "\n</head>", 1)
+        else:
+            html = injected + html
+        return HTMLResponse(html)
+
     app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
 else:  # pragma: no cover - first run before the frontend is moved
     log.error("Frontend directory %s is missing", FRONTEND_DIR)

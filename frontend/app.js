@@ -931,7 +931,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Persistent EventSource listener for proactive system notifications (reminders)
+    // Persistent EventSource listener for proactive system notifications (reminders & terminal events)
     function initProactiveEvents() {
         try {
             const eventSource = new EventSource('/api/events');
@@ -942,11 +942,12 @@ document.addEventListener('DOMContentLoaded', () => {
                         const alertMsg = `🔔 REMINDER: ${data.text}`;
                         triggerAlert(alertMsg);
                         triggerReaction(2000);
-                        // hud-text is looked up here rather than closed over:
-                        // the chat handler's local was not in scope.
                         const hud = document.getElementById('hud-text');
                         if (hud) hud.textContent = alertMsg;
                         if (data.audio_url) enqueueAudio(data.audio_url);
+                    } else if (data.type === 'terminal') {
+                        toggleTerminalDrawer(true);
+                        appendTerminalOutput(data.command, data.output, data.returncode);
                     }
                 } catch (e) {
                     console.error("Failed to parse proactive SSE event:", e);
@@ -960,6 +961,120 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (e) {
             console.error("Could not initialize EventSource /api/events:", e);
         }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  TERMINAL HUD DRAWER & COMMAND LOGGING
+    // ═══════════════════════════════════════════════════════════
+    const btnTerminalToggle = document.getElementById('btn-terminal-toggle');
+    const terminalDrawer = document.getElementById('terminal-drawer');
+    const terminalCloseBtn = document.getElementById('terminal-close-btn');
+    const terminalClearBtn = document.getElementById('terminal-clear-btn');
+    const terminalOutput = document.getElementById('terminal-output');
+    const terminalInputForm = document.getElementById('terminal-input-form');
+    const terminalInput = document.getElementById('terminal-input');
+
+    function toggleTerminalDrawer(forceState) {
+        if (!terminalDrawer) return;
+        const isOpen = terminalDrawer.classList.contains('open');
+        const shouldOpen = forceState !== undefined ? forceState : !isOpen;
+        if (shouldOpen) {
+            terminalDrawer.classList.add('open');
+            if (terminalInput) terminalInput.focus();
+        } else {
+            terminalDrawer.classList.remove('open');
+        }
+    }
+
+    function appendTerminalOutput(command, output, returncode) {
+        if (!terminalOutput) return;
+        const entry = document.createElement('div');
+        entry.className = 'space-y-1 pb-2 border-b border-neural-cyan/10 text-[11px]';
+
+        const promptLine = document.createElement('div');
+        promptLine.className = 'flex items-center gap-2 font-bold text-neural-cyan';
+        const timeSpan = document.createElement('span');
+        timeSpan.className = 'text-on-surface/40';
+        timeSpan.textContent = `[${new Date().toLocaleTimeString()}]`;
+        const cmdSpan = document.createElement('span');
+        cmdSpan.textContent = `$ ${command}`;
+        promptLine.appendChild(timeSpan);
+        promptLine.appendChild(cmdSpan);
+
+        const outLine = document.createElement('pre');
+        const codeColor = (returncode === 0 || returncode === undefined) ? 'text-on-surface/90' : 'text-system-red';
+        outLine.className = `whitespace-pre-wrap ${codeColor} pl-2 border-l-2 ${returncode === 0 ? 'border-neural-cyan/40' : 'border-system-red/50'} mt-1 font-data-mono`;
+        outLine.textContent = output || '(Command completed with no output)';
+
+        entry.appendChild(promptLine);
+        entry.appendChild(outLine);
+        terminalOutput.appendChild(entry);
+        terminalOutput.scrollTop = terminalOutput.scrollHeight;
+    }
+
+    const navItemTerminal = document.getElementById('nav-item-terminal');
+    if (navItemTerminal) {
+        navItemTerminal.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            toggleTerminalDrawer();
+        });
+    }
+
+    if (btnTerminalToggle) {
+        btnTerminalToggle.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            toggleTerminalDrawer();
+        });
+    }
+
+    // Global keyboard shortcut: Ctrl+` (Control + Backtick)
+    window.addEventListener('keydown', (e) => {
+        if (e.ctrlKey && (e.key === '`' || e.code === 'Backquote')) {
+            e.preventDefault();
+            toggleTerminalDrawer();
+        }
+    });
+    if (terminalCloseBtn) {
+        terminalCloseBtn.addEventListener('click', () => toggleTerminalDrawer(false));
+    }
+    if (terminalClearBtn) {
+        terminalClearBtn.addEventListener('click', () => {
+            if (terminalOutput) {
+                terminalOutput.innerHTML = '<div class="text-on-surface/40 italic">// G.I.D.E.O.N Live Execution Stream Initialized.</div>';
+            }
+        });
+    }
+
+    if (terminalInputForm) {
+        terminalInputForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            if (!terminalInput) return;
+            const cmd = terminalInput.value.trim();
+            if (!cmd) return;
+            terminalInput.value = '';
+
+            try {
+                const res = await fetch('/api/terminal/execute', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        // Injected into the page by the server's index route.
+                        'X-Gideon-Token': window.GIDEON_API_TOKEN || '',
+                    },
+                    body: JSON.stringify({ command: cmd }),
+                });
+                if (res.status === 401) {
+                    appendTerminalOutput(cmd, 'Unauthorized: reload the page to refresh the API token.', 1);
+                    return;
+                }
+                const data = await res.json();
+                appendTerminalOutput(cmd, data.output, data.status === 'ok' ? 0 : 1);
+            } catch (err) {
+                appendTerminalOutput(cmd, `Execution failed: ${err.message}`, 1);
+            }
+        });
     }
 
     // Initialize Sessions, Chat Connection, and Proactive Events on load

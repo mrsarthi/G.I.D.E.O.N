@@ -45,7 +45,7 @@ from config import (
 )
 from db import DatabaseManager, get_db
 from memory import addMemory, initMemory, queryMemory
-from tools.registry import OLLAMA_TOOLS, dispatch_tool_call
+from tools.registry import OLLAMA_TOOLS, dispatch_tool_call, tools_for_channel
 
 log = get_logger("gideon.orchestrator")
 
@@ -204,6 +204,7 @@ STATIC_SYSTEM_PROMPT = """You are G.I.D.E.O.N (Guided Intelligence Does Everythi
 - RULE 4 (NEVER LEAK TOOL JSON IN SPEECH): Never say things like "I would recommend a function call to" and never output raw JSON tool schemas in your spoken responses. Always reply directly in natural human language.
 - RULE 5 (DATE/TIME AWARENESS): The current local date and time is supplied to you in the live context block. Never invoke a tool to check the time or date.
 - RULE 6 (PLAYING MUSIC BY NAME): When the user asks to play a specific song, track, album, or artist by name (e.g., "play Loser by Tame Impala"), ALWAYS use play_youtube_music. NEVER use control_media for named music queries.
+- RULE 7 (ADDRESSING STYLE & FORBIDDEN ENDINGS): Randomly alternate addressing the user as "boss" or "sir" across turns. Address the user AT MOST ONCE per response, strictly near the beginning (e.g., "Yes boss", "Right away sir", "Certainly boss"). NEVER put a comma immediately after "boss" or "sir" (e.g., write "Yes boss" instead of "Yes, boss," so TTS speech flows naturally without a pause). NEVER put "boss" or "sir" at the end of a sentence or at the end of your response.
 """
 
 
@@ -216,7 +217,11 @@ def build_live_context_block(db: DatabaseManager, memories: str) -> str:
 
     block = f"""[LIVE CONTEXT]
 - User Name: {user_name}
-- Preferred Addressing Style: Always address the user naturally as "{user_name}", "boss", or "sir".
+- Address Formats: Randomly alternate between "boss" and "sir" in your response openings.
+- Addressing Rules:
+  1. Address the user AT MOST ONCE per turn, strictly near the beginning.
+  2. NEVER append "boss" or "sir" at the end of a sentence or end of response.
+  3. DO NOT place a comma after "boss" or "sir" (write "Yes boss..." or "Certainly sir..." without a comma after the title).
 - Ongoing Projects: {projects}
 - Current Local Time: {now}"""
 
@@ -363,6 +368,9 @@ _TOOL_INTENT_WORDS = {
     # computation / Wolfram Alpha
     "calculate", "compute", "convert", "solve", "equation", "distance",
     "population", "wolfram",
+    # terminal / CLI execution
+    "terminal", "command", "cmd", "powershell", "shell", "exec", "execute",
+    "pip", "npm", "git", "pytest", "cli",
 }
 
 # Arithmetic asked in words or symbols: "45 times 892", "12 * 7", "30% of 90".
@@ -493,7 +501,7 @@ def correct_media_tool_choice(
 # ---------------------------------------------------------------------------
 #  Tool execution
 # ---------------------------------------------------------------------------
-def execute_tool(name: str, args: dict[str, Any], collection: Any = None) -> str:
+def execute_tool(name: str, args: dict[str, Any], collection: Any = None, channel: str = "web") -> str:
     """Run a tool behind the confirmation gate, converting failures to text."""
     if REQUIRE_CONFIRMATION and name in CONFIRM_REQUIRED_TOOLS:
         log.info("Tool %s blocked pending user confirmation", name)
@@ -502,7 +510,7 @@ def execute_tool(name: str, args: dict[str, Any], collection: Any = None) -> str
             f"Ask the user to confirm they want this, then wait for their reply."
         )
     try:
-        return dispatch_tool_call(name, args, chroma_collection=collection)
+        return dispatch_tool_call(name, args, chroma_collection=collection, channel=channel)
     except Exception as exc:
         log.exception("Tool %s raised", name)
         return f"The {name} tool failed: {exc}"
@@ -512,7 +520,11 @@ def execute_tool(name: str, args: dict[str, Any], collection: Any = None) -> str
 #  Agent loop
 # ---------------------------------------------------------------------------
 def run_agent_stream(
-    db: DatabaseManager, collection: Any, session_id: str, user_prompt: str
+    db: DatabaseManager,
+    collection: Any,
+    session_id: str,
+    user_prompt: str,
+    channel: str = "web",
 ) -> Iterator[str]:
     """Stream a reply, executing tools in between passes when the model asks.
 
@@ -523,6 +535,9 @@ def run_agent_stream(
     messages = format_messages_for_ollama(db, collection, context_messages, user_prompt)
 
     offer_tools = should_offer_tools(user_prompt)
+    # Schemas are filtered per channel: a remote channel never even sees the
+    # tools it is not allowed to run.
+    channel_tools = tools_for_channel(channel)
     log.debug("Tools %s for this turn", "offered" if offer_tools else "withheld")
 
     for turn in range(MAX_TOOL_TURNS):
@@ -530,7 +545,7 @@ def run_agent_stream(
             stream = ollama.chat(
                 model=CHAT_MODEL,
                 messages=messages,
-                tools=OLLAMA_TOOLS if offer_tools else [],
+                tools=channel_tools if offer_tools else [],
                 stream=True,
                 options=OLLAMA_OPTIONS,
                 keep_alive=CHAT_KEEP_ALIVE,
@@ -615,7 +630,7 @@ def run_agent_stream(
             name, args = correct_media_tool_choice(name, args, user_prompt)
             log.info("Tool call: %s(%s)", name, args)
 
-            tool_result = execute_tool(name, args, collection)
+            tool_result = execute_tool(name, args, collection, channel=channel)
 
             # Stored as 'tool_call'/'tool' so build_context_window never
             # replays them as something G.I.D.E.O.N said out loud.
@@ -638,14 +653,18 @@ def run_agent_stream(
             messages.append({"role": "tool", "content": str(tool_result), "name": name})
 
     log.warning("Tool loop exhausted %d turns without a final answer", MAX_TOOL_TURNS)
-    yield "I wasn't able to finish that one, boss — the tool chain ran too long."
+    yield "I wasn't able to finish that one — the tool chain ran too long."
 
 
 def run_chat_loop(
-    db: DatabaseManager, collection: Any, session_id: str, user_prompt: str
+    db: DatabaseManager,
+    collection: Any,
+    session_id: str,
+    user_prompt: str,
+    channel: str = "web",
 ) -> str:
     """Synchronously run the agent loop for a turn and return the full text response."""
-    return "".join(run_agent_stream(db, collection, session_id, user_prompt))
+    return "".join(run_agent_stream(db, collection, session_id, user_prompt, channel))
 
 
 def run():

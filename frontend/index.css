@@ -121,3 +121,10 @@
     text-transform: uppercase;
     letter-spacing: 0.05em;
 }
+
+/* Terminal Drawer State */
+#terminal-drawer.open {
+    transform: translateY(0);
+    opacity: 1;
+    pointer-events: auto;
+}

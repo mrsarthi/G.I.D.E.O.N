@@ -112,8 +112,8 @@
             </div>
 
             <div class="flex gap-1">
-                <button class="p-2 text-on-surface/40 hover:text-neural-cyan transition-colors duration-500"><span class="material-symbols-outlined text-sm">sensors</span></button>
-                <button class="p-2 text-on-surface/40 hover:text-neural-cyan transition-colors duration-500"><span class="material-symbols-outlined text-sm">terminal</span></button>
+                <button class="p-2 text-on-surface/40 hover:text-neural-cyan transition-colors duration-500 cursor-pointer"><span class="material-symbols-outlined text-sm">sensors</span></button>
+                <button id="btn-terminal-toggle" class="p-2 text-on-surface/40 hover:text-neural-cyan transition-colors duration-500 cursor-pointer relative z-50" title="Toggle Terminal Console (Ctrl+`)"><span class="material-symbols-outlined text-sm">terminal</span></button>
             </div>
             <div class="text-right">
                 <p id="clock" class="text-neural-cyan font-data-mono text-xs font-bold tracking-widest">12:00:00</p>
@@ -132,8 +132,11 @@
             <button id="nav-item-memory" class="text-on-surface/30 hover:text-neural-cyan transition-all duration-500">
                 <span class="material-symbols-outlined text-[20px]">memory</span>
             </button>
-            <button id="nav-item-storage" class="text-on-surface/30 hover:text-neural-cyan transition-all duration-500">
+            <button id="nav-item-storage" class="text-on-surface/30 hover:text-neural-cyan transition-all duration-500" title="Storage Status">
                 <span class="material-symbols-outlined text-[20px]">database</span>
+            </button>
+            <button id="nav-item-terminal" class="text-on-surface/30 hover:text-neural-cyan transition-all duration-500 cursor-pointer" title="Terminal Console">
+                <span class="material-symbols-outlined text-[20px]">terminal</span>
             </button>
         </nav>
         <div class="mt-auto flex flex-col gap-8 items-center">
@@ -279,7 +282,35 @@
         </div>
     </footer>
 
+    <!-- Terminal HUD Drawer Panel -->
+    <div id="terminal-drawer" class="fixed right-6 bottom-24 z-50 w-[550px] max-w-[90vw] h-[360px] bg-obsidian-base/90 border border-neural-cyan/30 rounded-xl backdrop-blur-xl shadow-[0_0_40px_rgba(0,242,255,0.15)] flex flex-col transition-all duration-300 transform translate-y-[120%] opacity-0 pointer-events-none">
+        <!-- Terminal Header -->
+        <div class="flex items-center justify-between px-4 py-2.5 bg-surface/40 border-b border-neural-cyan/20 rounded-t-xl">
+            <div class="flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-pulse-emerald animate-pulse"></span>
+                <span class="material-symbols-outlined text-neural-cyan text-sm">terminal</span>
+                <span class="text-xs font-data-mono font-bold tracking-wider uppercase text-neural-cyan">G.I.D.E.O.N // Terminal Console</span>
+            </div>
+            <div class="flex items-center gap-2">
+                <button id="terminal-clear-btn" class="text-[10px] font-data-mono text-on-surface/50 hover:text-neural-cyan transition-colors px-2 py-0.5 rounded bg-surface/50 border border-neural-cyan/10">CLEAR</button>
+                <button id="terminal-close-btn" class="text-on-surface/50 hover:text-system-red transition-colors flex items-center justify-center">
+                    <span class="material-symbols-outlined text-sm">close</span>
+                </button>
+            </div>
+        </div>
+        <!-- Terminal Output Window -->
+        <div id="terminal-output" class="flex-1 p-4 font-data-mono text-xs overflow-y-auto space-y-3 scrollbar-thin text-on-surface/90">
+            <div class="text-on-surface/40 italic">// G.I.D.E.O.N Live Execution Stream Initialized.</div>
+        </div>
+        <!-- Terminal Input Bar -->
+        <form id="terminal-input-form" class="flex items-center gap-2 p-2 bg-surface/60 border-t border-neural-cyan/20 rounded-b-xl">
+            <span class="text-neural-cyan font-data-mono text-xs pl-2 font-bold">$</span>
+            <input id="terminal-input" type="text" autocomplete="off" placeholder="Enter CLI command (e.g. dir, git status)..." class="flex-1 bg-transparent border-none text-xs font-data-mono text-neural-cyan placeholder:text-on-surface/30 focus:outline-none focus:ring-0 p-1" />
+            <button type="submit" class="px-3 py-1 bg-neural-cyan/10 hover:bg-neural-cyan/20 text-neural-cyan text-[11px] font-data-mono font-bold rounded border border-neural-cyan/30 transition-colors">EXEC</button>
+        </form>
+    </div>
+
     <!-- Application Script -->
-    <script type="module" src="app.js?v=1.0.7"></script>
+    <script type="module" src="app.js?v=1.0.8"></script>
 </body>
 </html>
