@@ -1,582 +1,619 @@
-import re
+"""
+G.I.D.E.O.N Orchestration Engine
+
+Design notes that are easy to break:
+
+* Prefix cache. Ollama only reuses cached prefill while the *leading* tokens
+  are byte-identical between turns. Anything volatile (the clock, recalled
+  memories, the profile) therefore lives at the END of the message list, not
+  at index 0. Putting the clock in the system prompt re-prefills the whole
+  context every minute.
+* Token budget. Ollama prepends the tool schemas to the prompt, so the
+  history budget must be num_ctx minus schemas, minus recalled memories,
+  minus room for the answer. See config.PROMPT_TOKEN_BUDGET.
+* Tool bookkeeping never re-enters the context as assistant speech, or the
+  model learns to say "[Tool Call: ...]" out loud.
+"""
+
+from __future__ import annotations
+
 import json
+import re
+import sys
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
+from typing import Any, Iterator
 
 import ollama
 
-from db import DatabaseManager
-from memory import initMemory, addMemory, queryMemory
-from tools.samay import execute as samay_execute
+from config import (
+    CHARS_PER_TOKEN,
+    CHAT_KEEP_ALIVE,
+    CHAT_MODEL,
+    CONFIRM_REQUIRED_TOOLS,
+    HISTORY_MESSAGE_LIMIT,
+    MAX_TOOL_TURNS,
+    MEMORY_RESERVE,
+    OLLAMA_OPTIONS,
+    PROMPT_TOKEN_BUDGET,
+    REQUIRE_CONFIRMATION,
+    TOOL_GATING,
+    get_logger,
+)
+from db import DatabaseManager, get_db
+from memory import addMemory, initMemory, queryMemory
+from tools.registry import OLLAMA_TOOLS, dispatch_tool_call
+
+log = get_logger("gideon.orchestrator")
+
+# Roles that are replayed as conversation. Tool bookkeeping is excluded.
+_CONTEXT_ROLES = {"user", "assistant"}
+# Rows written by older builds that stored tool calls as assistant speech.
+_LEGACY_TOOL_PREFIXES = ("[Tool Call:", "[Tool Result]")
+
+# How much of a JSON-looking reply to buffer before deciding it is really
+# prose that happens to start with a brace.
+PSEUDO_CALL_CHAR_LIMIT = 400
+
+_memory_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="chroma_writer")
 
 
-CHAT_MODEL = "llama3.2:latest"
-TOKEN_CAP = 4000
-# Rough approximation: 1 token ~ 4 characters
-CHARS_PER_TOKEN = 4
-
-SYSTEM_PROMPT = """You are G.I.D.E.O.N (Guided Intelligence Does Everything One Needs), a precise, local personal AI assistant.
-
-[CORE OPERATIONAL DIRECTIVE]
-You operate under a strict context-safety guardrail. You must choose between exactly THREE modes of response based on the active conversation context. Never mix modes. Never hallucinate historical facts.
-Always address the user as either "boss" or "sir" (e.g. "Yes, sir", "Right away, boss", "Certainly, sir") naturally in conversation whenever appropriate or needed. Vary your choices between the two to keep the tone natural and respectful.
-
-[MODE 1: CHAT MODE]
-- Trigger: The user's prompt can be fully, accurately, and completely answered using ONLY the provided sliding window conversation history or universal general knowledge.
-- Execution: Respond concisely, directly, and helpful. Do not mention memory limits or tools.
-
-[MODE 2: MEMORY TOOL MODE]
-- Trigger: The user references past events, projects, decisions, names, dates, or specific details NOT explicitly stated in the active context, OR the user explicitly requests a memory/log search.
-- Execution: You must immediately halt standard response generation and output exactly one line.
-- Formatting Rule: Output the tool call exactly as specified below. Do not include markdown formatting, backticks, conversational preamble, or explanations.
-- Syntax: CALL_TOOL: search_memory [keywords]
-
-[MODE 3: SAMAY TOOL MODE]
-- Trigger: The user asks for the current time, date, day of the week, or any real-time temporal information.
-- Execution: You do NOT know the current time or date. You must ALWAYS use the samay tool for any time/date query. Output exactly one line.
-- Syntax: CALL_TOOL: samay [subcommand]
-- Subcommands: time | date | datetime
-- Examples:
-  User: "What time is it?"
-  G.I.D.E.O.N: CALL_TOOL: samay [time]
-  User: "What's today's date?"
-  G.I.D.E.O.N: CALL_TOOL: samay [date]
-  User: "What day and time is it right now?"
-  G.I.D.E.O.N: CALL_TOOL: samay [datetime]
-
-[CRITICAL EXAMPLES]
-User: "What did we decide about the database schema?"
-Active Context: [Empty or unrelated history]
-G.I.D.E.O.N: CALL_TOOL: search_memory [database schema design]
-
-User: "Check my notes on the travel plans for April."
-Active Context: [Empty or unrelated history]
-G.I.D.E.O.N: CALL_TOOL: search_memory [travel plans April]
-
-User: "Can you explain how a Python class works?"
-Active Context: [Any]
-G.I.D.E.O.N: A Python class acts as a blueprint for creating objects...
-
-User: "What time is it?"
-G.I.D.E.O.N: CALL_TOOL: samay [time]
-
-[EXECUTION GUARDBARS]
-1. If forced to choose between answering with incomplete data or searching, ALWAYS choose MEMORY TOOL MODE.
-2. The search keywords must be lowercase, stripped of punctuation, and focused strictly on high-signal semantic terms (nouns/technologies/dates).
-3. NEVER guess the current time or date. ALWAYS use CALL_TOOL: samay for temporal queries.
-"""
-
-MEMORY_TOOL_PATTERN = re.compile(r"CALL_TOOL:\s*search_memory\s*\[(.+?)\]")
-SAMAY_TOOL_PATTERN = re.compile(r"CALL_TOOL:\s*samay\s*\[(.+?)\]")
+def addMemoryAsync(collection, messageId, content, sessionId, role, timestamp):
+    """Submit a ChromaDB write to a background thread (non-blocking)."""
+    _memory_executor.submit(
+        addMemory, collection, messageId, content, sessionId, role, timestamp
+    )
 
 
-def estimateTokens(text):
-    """Estimate token count from text using character-based approximation."""
+def estimateTokens(text: str) -> int:
     return len(text) // CHARS_PER_TOKEN
 
 
-def buildContextWindow(db, sessionId):
-    """Build the sliding window context from recent messages, respecting the 4k token cap."""
-    # Fetch a generous batch of recent messages (already chronological)
-    messages = db.get_sliding_window(sessionId, limit=50)
-
-    contextMessages = []
-    tokenCount = estimateTokens(SYSTEM_PROMPT)
-
-    # Walk backwards from most recent, accumulating until we hit the cap
-    for role, content in reversed(messages):
-        msgTokens = estimateTokens(content)
-        if tokenCount + msgTokens > TOKEN_CAP:
-            break
-        contextMessages.insert(0, {"role": role, "content": content})
-        tokenCount += msgTokens
-
-    return contextMessages
-
-
-def formatMessagesForOllama(contextMessages):
-    """Prepend the system prompt to the context messages for Ollama, mapping 'tool' to 'user'."""
-    formatted = [{"role": "system", "content": SYSTEM_PROMPT}]
-    for msg in contextMessages:
-        role = msg["role"]
-        content = msg["content"]
-        if role == "tool":
-            formatted.append({"role": "user", "content": f"[Tool Output]\n{content}"})
-        else:
-            formatted.append({"role": role, "content": content})
-    return formatted
-
-
-def runModel(messages):
-    """Send messages to Ollama and collect the full response (non-streaming for interception)."""
-    response = ollama.chat(
-        model=CHAT_MODEL,
-        messages=messages,
-        stream=False
-    )
-    return response['message']['content']
-
-
-def streamModel(messages):
-    """Send messages to Ollama and stream the response to the terminal."""
-    stream = ollama.chat(
-        model=CHAT_MODEL,
-        messages=messages,
-        stream=True
-    )
-    print(f"\033[32mG.I.D.E.O.N:\033[0m ", end="", flush=True)
-    fullResponse = ""
-    for chunk in stream:
-        text = chunk['message']['content']
-        print(text, end='', flush=True)
-        fullResponse += text
-    print()  # newline after streaming completes
-    return fullResponse
-
-
-def split_stream_at_tool_call(stream_generator):
-    """Given a generator of text chunks, yields:
-    
-    - ('text', chunk) for normal text chunks (preamble)
-    - ('tool_call', full_tool_call_text) when a tool call is detected
-    """
-    prefix = "CALL_TOOL:"
-    buffer = ""
-    
-    for chunk in stream_generator:
-        buffer += chunk
-        
-        # Check if CALL_TOOL: is in the buffer
-        if prefix in buffer:
-            # Split buffer into preamble and tool call start
-            preamble, tool_call_start = buffer.split(prefix, 1)
-            if preamble:
-                yield 'text', preamble
-            
-            # Consume the rest of the stream to get the full tool call
-            tool_call_buffer = prefix + tool_call_start
-            for rest_chunk in stream_generator:
-                tool_call_buffer += rest_chunk
-            
-            yield 'tool_call', tool_call_buffer
-            return
-        
-        # Check if the buffer ends with a prefix of "CALL_TOOL:"
-        possible_len = 0
-        for i in range(len(prefix), 0, -1):
-            sub = prefix[:i]
-            if buffer.endswith(sub):
-                possible_len = i
-                break
-        
-        if possible_len > 0:
-            # Yield everything up to the start of the possible prefix
-            to_yield = buffer[:-possible_len]
-            if to_yield:
-                yield 'text', to_yield
-            buffer = buffer[-possible_len:]
-        else:
-            # Yield the entire buffer
-            yield 'text', buffer
-            buffer = ""
-            
-    # Stream finished and no CALL_TOOL: was found
-    if buffer:
-        yield 'text', buffer
-
-
-def streamAndInterceptModel(messages):
-    """Streams the model response from Ollama.
-    
-    If it contains a tool call command (CALL_TOOL:), intercepts the tool call part.
-    Otherwise, streams the response to the terminal in real-time.
-    
-    Returns a tuple: (full_response, preamble, tool_call_buffer)
-    """
-    raw_stream = streamModelGenerator(messages)
-    
-    full_response = ""
-    preamble = ""
-    tool_call_buffer = ""
-    
-    has_printed_header = False
-    
-    for kind, text in split_stream_at_tool_call(raw_stream):
-        if kind == 'text':
-            if not has_printed_header:
-                print(f"\033[32mG.I.D.E.O.N:\033[0m ", end="", flush=True)
-                has_printed_header = True
-            print(text, end="", flush=True)
-            preamble += text
-            full_response += text
-        elif kind == 'tool_call':
-            tool_call_buffer = text
-            full_response += text
-            
-    if has_printed_header and not tool_call_buffer:
-        print()  # Add a trailing newline for natural chats
-        
-    return full_response, preamble, tool_call_buffer
-
-
-def handleMemoryToolCall(db, collection, sessionId, keywords, contextMessages, preamble=""):
-    """Handle a CALL_TOOL: search_memory interception.
-    
-    Queries ChromaDB, injects retrieved memories into context, re-runs the model,
-    and logs the full 4-step tool execution chronologically.
-    """
-    # Step 1: Log the assistant's tool call command
-    toolCallContent = preamble + f"CALL_TOOL: search_memory [{keywords}]"
-    toolCallId = db.insert_message(sessionId, "assistant", toolCallContent, tool_name="search_memory", tool_args=json.dumps({"keywords": keywords}))
-    addMemory(collection, toolCallId, toolCallContent, sessionId, "assistant", datetime.now().isoformat())
-
-    # Step 2: Query ChromaDB for relevant memories
-    memories = queryMemory(collection, keywords)
-
-    # Step 3: Format and log the tool response
-    if memories:
-        memoryTexts = []
-        for m in memories:
-            meta = m.get('metadata', {})
-            memoryTexts.append(f"[Session: {meta.get('session_id', '?')}, Role: {meta.get('role', '?')}] {m['content']}")
-        toolResponse = "RETRIEVED MEMORIES:\n" + "\n---\n".join(memoryTexts)
-    else:
-        toolResponse = "RETRIEVED MEMORIES: No relevant past conversations found."
-
-    toolResponseId = db.insert_message(sessionId, "tool", toolResponse, tool_name="search_memory")
-    addMemory(collection, toolResponseId, toolResponse, sessionId, "tool", datetime.now().isoformat())
-
-    # Step 4: Re-run the model with injected memories
-    simplifiedPrompt = (
-        "You are G.I.D.E.O.N (Guided Intelligence Does Everything One Needs), "
-        "a precise, local personal AI assistant.\n\n"
-        "Respond to the user's question concisely, directly, and naturally using the retrieved memories. "
-        "Do NOT output any CALL_TOOL commands or technical messages. "
-        "Always address the user as either \"boss\" or \"sir\" (e.g., \"Yes, sir\", \"Right away, boss\") naturally in your response."
-    )
-
-    ollamaMessages = [{"role": "system", "content": simplifiedPrompt}]
-    for msg in contextMessages:
-        role = msg["role"]
-        content = msg["content"]
-        if role == "tool":
-            ollamaMessages.append({"role": "user", "content": f"[Tool Output]\n{content}"})
-        else:
-            ollamaMessages.append({"role": role, "content": content})
-
-    ollamaMessages.append({"role": "assistant", "content": toolCallContent})
-    ollamaMessages.append({"role": "user", "content": f"[Tool Output]\n{toolResponse}"})
-
-    print("\n\033[90m[Memory search complete. Generating response...]\033[0m\n")
-
-    finalResponse = streamModel(ollamaMessages)
-
-    # Step 5: Log the final enriched response
-    finalId = db.insert_message(sessionId, "assistant", finalResponse, tool_name="search_memory")
-    addMemory(collection, finalId, finalResponse, sessionId, "assistant", datetime.now().isoformat())
-
-    return finalResponse
-
-
-def handleSamayToolCall(db, collection, sessionId, subcommand, contextMessages, preamble=""):
-    """Handle a CALL_TOOL: samay interception.
-    
-    Executes the samay tool, injects the result into context, re-runs the model,
-    and logs the tool execution chronologically.
-    """
-    # Step 1: Log the assistant's tool call command
-    toolCallContent = preamble + f"CALL_TOOL: samay [{subcommand}]"
-    toolCallId = db.insert_message(sessionId, "assistant", toolCallContent, tool_name="samay", tool_args=json.dumps({"subcommand": subcommand}))
-    addMemory(collection, toolCallId, toolCallContent, sessionId, "assistant", datetime.now().isoformat())
-
-    # Step 2: Execute the samay tool
-    result = samay_execute(subcommand.strip())
-
-    # Step 3: Log the tool response
-    toolResponse = f"SAMAY TOOL RESULT: {result}"
-    toolResponseId = db.insert_message(sessionId, "tool", toolResponse, tool_name="samay")
-    addMemory(collection, toolResponseId, toolResponse, sessionId, "tool", datetime.now().isoformat())
-
-    # Step 4: Re-run the model with injected time/date
-    simplifiedPrompt = (
-        "You are G.I.D.E.O.N (Guided Intelligence Does Everything One Needs), "
-        "a precise, local personal AI assistant.\n\n"
-        "Respond to the user's question concisely, directly, and naturally using the provided time/date. "
-        "Do NOT output any CALL_TOOL commands or technical messages. "
-        "Always address the user as either \"boss\" or \"sir\" (e.g., \"Yes, sir\", \"Right away, boss\") naturally in your response."
-    )
-
-    ollamaMessages = [{"role": "system", "content": simplifiedPrompt}]
-    for msg in contextMessages:
-        role = msg["role"]
-        content = msg["content"]
-        if role == "tool":
-            ollamaMessages.append({"role": "user", "content": f"[Tool Output]\n{content}"})
-        else:
-            ollamaMessages.append({"role": role, "content": content})
-
-    ollamaMessages.append({"role": "assistant", "content": toolCallContent})
-    ollamaMessages.append({"role": "user", "content": f"[Tool Output]\n{toolResponse}"})
-
-    print(f"\n\033[90m[Samay: {result}]\033[0m\n")
-
-    finalResponse = streamModel(ollamaMessages)
-
-    # Step 5: Log the final enriched response
-    finalId = db.insert_message(sessionId, "assistant", finalResponse, tool_name="samay")
-    addMemory(collection, finalId, finalResponse, sessionId, "assistant", datetime.now().isoformat())
-
-    return finalResponse
-
-
-def streamModelGenerator(messages):
-    """Send messages to Ollama and yield chunk content as it arrives."""
-    stream = ollama.chat(
-        model=CHAT_MODEL,
-        messages=messages,
-        stream=True
-    )
-    for chunk in stream:
-        yield chunk['message']['content']
-
-
-def streamMemoryToolCall(db, collection, sessionId, keywords, contextMessages, preamble=""):
-    """Handle a CALL_TOOL: search_memory interception with SSE streaming support.
-    
-    Queries Chroma, logs tool outputs, re-runs model in a stream, and yields chunks.
-    """
-    # Step 1: Log the assistant's tool call command
-    toolCallContent = preamble + f"CALL_TOOL: search_memory [{keywords}]"
-    toolCallId = db.insert_message(sessionId, "assistant", toolCallContent, tool_name="search_memory", tool_args=json.dumps({"keywords": keywords}))
-    addMemory(collection, toolCallId, toolCallContent, sessionId, "assistant", datetime.now().isoformat())
-
-    # Step 2: Execute search_memory tool (queries Chroma)
-    memories = queryMemory(collection, keywords)
-    
-    # Step 3: Log the tool response
-    if memories:
-        memoryTexts = []
-        for m in memories:
-            meta = m.get('metadata', {})
-            memoryTexts.append(f"[Session: {meta.get('session_id', '?')}, Role: {meta.get('role', '?')}] {m['content']}")
-        toolResponse = "RETRIEVED MEMORIES:\n" + "\n---\n".join(memoryTexts)
-    else:
-        toolResponse = "RETRIEVED MEMORIES: No relevant past conversations found."
-
-    toolResponseId = db.insert_message(sessionId, "tool", toolResponse, tool_name="search_memory")
-    addMemory(collection, toolResponseId, toolResponse, sessionId, "tool", datetime.now().isoformat())
-
-    # Step 4: Re-run the model with injected memories
-    simplifiedPrompt = (
-        "You are G.I.D.E.O.N (Guided Intelligence Does Everything One Needs), "
-        "a precise, local personal AI assistant.\n\n"
-        "Respond to the user's question concisely, directly, and naturally using the retrieved memories. "
-        "Do NOT output any CALL_TOOL commands or technical messages. "
-        "Always address the user as either \"boss\" or \"sir\" (e.g., \"Yes, sir\", \"Right away, boss\") naturally in your response."
-    )
-
-    ollamaMessages = [{"role": "system", "content": simplifiedPrompt}]
-    for msg in contextMessages:
-        role = msg["role"]
-        content = msg["content"]
-        if role == "tool":
-            ollamaMessages.append({"role": "user", "content": f"[Tool Output]\n{content}"})
-        else:
-            ollamaMessages.append({"role": role, "content": content})
-
-    ollamaMessages.append({"role": "assistant", "content": toolCallContent})
-    ollamaMessages.append({"role": "user", "content": f"[Tool Output]\n{toolResponse}"})
-
-    print("\n\033[90m[Memory search complete. Generating response...]\033[0m\n")
-
-    finalResponse = ""
-    for chunk in streamModelGenerator(ollamaMessages):
-        finalResponse += chunk
-        yield chunk
-
-    # Step 5: Log the final enriched response
-    finalId = db.insert_message(sessionId, "assistant", finalResponse, tool_name="search_memory")
-    addMemory(collection, finalId, finalResponse, sessionId, "assistant", datetime.now().isoformat())
-
-
-def streamSamayToolCall(db, collection, sessionId, subcommand, contextMessages, preamble=""):
-    """Handle a CALL_TOOL: samay interception with SSE streaming support.
-    
-    Executes samay tool, logs outputs, re-runs model in a stream, and yields chunks.
-    """
-    # Step 1: Log the assistant's tool call command
-    toolCallContent = preamble + f"CALL_TOOL: samay [{subcommand}]"
-    toolCallId = db.insert_message(sessionId, "assistant", toolCallContent, tool_name="samay", tool_args=json.dumps({"subcommand": subcommand}))
-    addMemory(collection, toolCallId, toolCallContent, sessionId, "assistant", datetime.now().isoformat())
-
-    # Step 2: Execute the samay tool
-    result = samay_execute(subcommand.strip())
-
-    # Step 3: Log the tool response
-    toolResponse = f"SAMAY TOOL RESULT: {result}"
-    toolResponseId = db.insert_message(sessionId, "tool", toolResponse, tool_name="samay")
-    addMemory(collection, toolResponseId, toolResponse, sessionId, "tool", datetime.now().isoformat())
-
-    # Step 4: Re-run the model with injected time/date
-    simplifiedPrompt = (
-        "You are G.I.D.E.O.N (Guided Intelligence Does Everything One Needs), "
-        "a precise, local personal AI assistant.\n\n"
-        "Respond to the user's question concisely, directly, and naturally using the provided time/date. "
-        "Do NOT output any CALL_TOOL commands or technical messages. "
-        "Always address the user as either \"boss\" or \"sir\" (e.g., \"Yes, sir\", \"Right away, boss\") naturally in your response."
-    )
-
-    ollamaMessages = [{"role": "system", "content": simplifiedPrompt}]
-    for msg in contextMessages:
-        role = msg["role"]
-        content = msg["content"]
-        if role == "tool":
-            ollamaMessages.append({"role": "user", "content": f"[Tool Output]\n{content}"})
-        else:
-            ollamaMessages.append({"role": role, "content": content})
-
-    ollamaMessages.append({"role": "assistant", "content": toolCallContent})
-    ollamaMessages.append({"role": "user", "content": f"[Tool Output]\n{toolResponse}"})
-
-    print(f"\n\033[90m[Samay: {result}]\033[0m\n")
-
-    finalResponse = ""
-    for chunk in streamModelGenerator(ollamaMessages):
-        finalResponse += chunk
-        yield chunk
-
-    # Step 5: Log the final enriched response
-    finalId = db.insert_message(sessionId, "assistant", finalResponse, tool_name="samay")
-    addMemory(collection, finalId, finalResponse, sessionId, "assistant", datetime.now().isoformat())
-
-
-def selectSession(db):
-    """Prompt the user to start a new session or resume an existing one."""
-    print("\n\033[36m╔══════════════════════════════════════╗")
-    print("║        G.I.D.E.O.N  v0.1.0          ║")
-    print("╚══════════════════════════════════════╝\033[0m\n")
-
-    # Check for existing sessions
-    cursor = db.conn.cursor()
-    cursor.execute("SELECT session_id, session_name, created_at FROM session ORDER BY created_at DESC")
-    sessions = cursor.fetchall()
-
-    if sessions:
-        print("\033[33mExisting sessions:\033[0m")
-        for i, (sid, sname, created) in enumerate(sessions):
-            print(f"  \033[36m[{i + 1}]\033[0m {sname} \033[90m({created})\033[0m")
-        print(f"  \033[36m[N]\033[0m Start a new session")
-        print()
-
-        choice = input("\033[33mSelect a session number or 'N' for new: \033[0m").strip()
-
-        if choice.upper() == 'N':
-            name = input("\033[33mSession name: \033[0m").strip()
-            if not name:
-                name = f"Session {datetime.now().strftime('%Y-%m-%d %H:%M')}"
-            sessionId = db.create_session(name)
-            print(f"\n\033[32mNew session created: {name}\033[0m\n")
-            return sessionId
-        else:
+# ---------------------------------------------------------------------------
+#  Ollama response shape helpers
+# ---------------------------------------------------------------------------
+def extract_tool_calls(response: Any) -> list[dict[str, Any]]:
+    """Extract tool calls from an Ollama ChatResponse object or dict."""
+    msg = getattr(response, "message", None)
+    if msg is None and isinstance(response, dict):
+        msg = response.get("message")
+    if not msg:
+        return []
+
+    raw_calls = getattr(msg, "tool_calls", None)
+    if raw_calls is None and isinstance(msg, dict):
+        raw_calls = msg.get("tool_calls")
+    if not raw_calls:
+        return []
+
+    parsed_calls = []
+    for call in raw_calls:
+        fn = getattr(call, "function", None) or (
+            call.get("function") if isinstance(call, dict) else None
+        )
+        if not fn:
+            continue
+        name = getattr(fn, "name", None) or (
+            fn.get("name") if isinstance(fn, dict) else ""
+        )
+        args = getattr(fn, "arguments", None) or (
+            fn.get("arguments") if isinstance(fn, dict) else {}
+        )
+        if isinstance(args, str):
             try:
-                idx = int(choice) - 1
-                if 0 <= idx < len(sessions):
-                    sessionId = sessions[idx][0]
-                    print(f"\n\033[32mResuming session: {sessions[idx][1]}\033[0m\n")
-                    return sessionId
-            except ValueError:
-                pass
-            print("\033[31mInvalid selection. Starting new session.\033[0m")
+                args = json.loads(args)
+            except json.JSONDecodeError:
+                log.warning("Tool %s sent unparseable arguments: %s", name, args)
+                args = {}
+        parsed_calls.append({"name": name, "arguments": args})
 
-    name = input("\033[33mSession name: \033[0m").strip()
-    if not name:
-        name = f"Session {datetime.now().strftime('%Y-%m-%d %H:%M')}"
-    sessionId = db.create_session(name)
-    print(f"\n\033[32mNew session created: {name}\033[0m\n")
-    return sessionId
+    return parsed_calls
 
 
-def chatLoop(db, collection, sessionId):
-    """Main interactive chat loop with dual-write and tool interception."""
-    print("\033[90mType '/quit' to exit, '/good' or '/bad' to flag the last response, '/search <query>' to force memory search.\033[0m\n")
+def parse_pseudo_tool_call(text: str) -> dict[str, Any] | None:
+    """Recognise a tool call that the model emitted as plain text.
 
-    lastAssistantMessageId = None
+    Small models regularly ignore the native tool-call channel and just print
+    `{"name": "...", "parameters": {...}}` into their answer. Ollama hands
+    that to us as content, so without this it gets streamed to the UI and
+    read aloud by the TTS — the exact failure RULE 4 tries to prevent.
 
-    while True:
+    Returns None when the text is not (yet) a complete JSON object.
+    """
+    candidate = text.strip()
+    if candidate.startswith("```"):
+        candidate = candidate.strip("`").strip()
+        if candidate[:4].lower() == "json":
+            candidate = candidate[4:].strip()
+    if not candidate.startswith("{"):
+        return None
+
+    try:
+        obj = json.loads(candidate)
+    except json.JSONDecodeError:
+        return None  # Possibly incomplete; caller keeps buffering.
+
+    if not isinstance(obj, dict):
+        return None
+
+    name = obj.get("name") or obj.get("function") or obj.get("tool")
+    if not isinstance(name, str) or not name:
+        return None
+
+    args = obj.get("parameters") or obj.get("arguments") or {}
+    return {"name": name, "arguments": args if isinstance(args, dict) else {}}
+
+
+def extract_chunk_content(chunk: Any) -> str:
+    """Extract the text delta from an Ollama stream chunk."""
+    msg = getattr(chunk, "message", None)
+    if msg is None and isinstance(chunk, dict):
+        msg = chunk.get("message")
+    if not msg:
+        return ""
+    content = getattr(msg, "content", None)
+    if content is None and isinstance(msg, dict):
+        content = msg.get("content", "")
+    return content or ""
+
+
+# ---------------------------------------------------------------------------
+#  Prompt assembly
+# ---------------------------------------------------------------------------
+# Index 0 and byte-stable for the life of the process. Nothing dynamic here,
+# ever — this is the block the prefix cache is built on.
+STATIC_SYSTEM_PROMPT = """You are G.I.D.E.O.N (Guided Intelligence Does Everything One Needs), an elite personal AI assistant inspired by JARVIS.
+
+[OPERATIONAL DIRECTIVES & TOOL GUARDRAILS]
+- You are concise, precise, direct, and conversational—an ambient AI assistant like JARVIS. Never break character.
+- RULE 1 (GENERAL CHAT, EXPLANATIONS & FOLLOW-UPS): When the user asks general technical/conceptual questions, requests summaries, or says things like "in brief please", "summarize that", or "hi", DO NOT invoke any tools. Respond directly using your intelligence and conversation history.
+- RULE 2 (EXPLICIT USER COMMANDS ONLY): Only invoke a tool when the user gives a clear operational command (e.g., checking PC hardware diagnostics, reminders, opening an app, checking/copying to the Windows clipboard, searching the web, adjusting PC audio volume, controlling media, searching or playing tracks on YouTube Music, or reading a local document/PDF).
+- RULE 3 (INVISIBLE WEB SEARCHING): When the user instructs you to search the internet or check online info, ALWAYS use search_web. NEVER attempt to open a browser window for the user. Read the background text results and explain the findings directly in natural speech.
+- RULE 4 (NEVER LEAK TOOL JSON IN SPEECH): Never say things like "I would recommend a function call to" and never output raw JSON tool schemas in your spoken responses. Always reply directly in natural human language.
+- RULE 5 (DATE/TIME AWARENESS): The current local date and time is supplied to you in the live context block. Never invoke a tool to check the time or date.
+- RULE 6 (PLAYING MUSIC BY NAME): When the user asks to play a specific song, track, album, or artist by name (e.g., "play Loser by Tame Impala"), ALWAYS use play_youtube_music. NEVER use control_media for named music queries.
+"""
+
+
+def build_live_context_block(db: DatabaseManager, memories: str) -> str:
+    """Volatile context. Goes at the END of the message list, never the start."""
+    profile = db.get_user_profile()
+    user_name = profile.get("user_name", "boss")
+    projects = profile.get("ongoing_projects", "G.I.D.E.O.N AI Development")
+    now = datetime.now().strftime("%A, %B %d, %Y at %I:%M %p")
+
+    block = f"""[LIVE CONTEXT]
+- User Name: {user_name}
+- Preferred Addressing Style: Always address the user naturally as "{user_name}", "boss", or "sir".
+- Ongoing Projects: {projects}
+- Current Local Time: {now}"""
+
+    if memories:
+        block += f"\n\n[RELEVANT MEMORIES FROM PAST CONVERSATIONS]\n{memories}"
+
+    return block
+
+
+def _is_context_worthy(role: str, content: str) -> bool:
+    """Filter tool bookkeeping out of replayed conversation history."""
+    if role not in _CONTEXT_ROLES:
+        return False
+    if content.startswith(_LEGACY_TOOL_PREFIXES):
+        return False
+    return bool(content.strip())
+
+
+def build_context_window(db: DatabaseManager, session_id: str) -> list[dict[str, Any]]:
+    """Assemble recent conversation, newest-first, within the token budget."""
+    rows = db.get_sliding_window(session_id, limit=HISTORY_MESSAGE_LIMIT)
+
+    budget = PROMPT_TOKEN_BUDGET - estimateTokens(STATIC_SYSTEM_PROMPT)
+    context_messages: list[dict[str, Any]] = []
+    token_count = 0
+
+    for role, content in reversed(rows):
+        if not _is_context_worthy(role, content):
+            continue
+        msg_tokens = estimateTokens(content)
+        if token_count + msg_tokens > budget:
+            break
+        context_messages.insert(0, {"role": role, "content": content})
+        token_count += msg_tokens
+
+    log.debug(
+        "Context: %d messages, ~%d tokens (budget %d)",
+        len(context_messages),
+        token_count,
+        budget,
+    )
+    return context_messages
+
+
+def auto_retrieve_memories(collection: Any, user_prompt: str) -> str:
+    """Recall relevant past messages, trimmed to the memory token reserve."""
+    if not user_prompt.strip():
+        return ""
+    try:
+        results = queryMemory(collection, user_prompt)
+    except Exception as exc:
+        log.error("Memory retrieval failed: %s", exc)
+        return ""
+
+    if not results:
+        return ""
+
+    snippets: list[str] = []
+    used = 0
+    for m in results:
+        content = m.get("content", "").strip()
+        if not content:
+            continue
+        cost = estimateTokens(content)
+        if used + cost > MEMORY_RESERVE:
+            break
+        snippets.append(content)
+        used += cost
+
+    return "\n---\n".join(snippets)
+
+
+def format_messages_for_ollama(
+    db: DatabaseManager,
+    collection: Any,
+    context_messages: list[dict[str, Any]],
+    user_prompt: str,
+) -> list[dict[str, Any]]:
+    """Build the final message list, cache-stable prefix first, volatile last.
+
+    Layout: [static system] [older history] [live context] [newest user turn]
+    Everything up to and including the older history is byte-identical to the
+    previous turn, so Ollama reuses its prefill.
+    """
+    memories = auto_retrieve_memories(collection, user_prompt)
+    live_block = build_live_context_block(db, memories)
+
+    messages: list[dict[str, Any]] = [
+        {"role": "system", "content": STATIC_SYSTEM_PROMPT}
+    ]
+
+    if context_messages:
+        messages.extend(context_messages[:-1])
+        messages.append({"role": "system", "content": live_block})
+        messages.append(context_messages[-1])
+    else:
+        messages.append({"role": "system", "content": live_block})
+        messages.append({"role": "user", "content": user_prompt})
+
+    return messages
+
+
+# ---------------------------------------------------------------------------
+#  Tool gating
+# ---------------------------------------------------------------------------
+# Words that signal the user wants something *done* rather than discussed.
+# Deliberately generous: a false positive only costs prefill, while a false
+# negative means a command silently does nothing.
+_TOOL_INTENT_WORDS = {
+    # apps / system
+    "open", "launch", "run", "start", "close", "app", "application",
+    "cpu", "gpu", "ram", "vram", "disk", "drive", "battery", "temperature",
+    "temp", "hardware", "diagnostics", "diagnostic", "status", "telemetry",
+    "system", "performance", "usage", "specs",
+    # search
+    "search", "google", "look", "lookup", "browse", "internet", "web",
+    "online", "news", "weather", "latest", "current",
+    # clipboard
+    "clipboard", "copy", "paste", "copied",
+    # audio / media
+    "volume", "mute", "unmute", "louder", "quieter", "sound", "audio",
+    "play", "pause", "resume", "skip", "track", "song", "music", "spotify",
+    "next", "previous", "listen", "youtube", "yt", "album", "playlist",
+    "artist", "tune", "queue", "blast",
+    # reminders
+    "remind", "reminder", "reminders", "alarm", "schedule", "alert",
+    # files
+    "file", "files", "folder", "directory", "find", "locate", "read",
+    "document", "pdf", "open up",
+}
+
+# Multi-word phrases that imply action without a single keyword.
+_TOOL_INTENT_PHRASES = (
+    "check my", "check the", "how much", "what's my", "whats my", "what is my",
+    "turn up", "turn down", "turn on", "turn off", "set the", "pull up",
+    "bring up", "shut down",
+    # Music requests that name no keyword: "put on some tame impala".
+    "put on", "throw on", "listen to",
+)
+
+
+def should_offer_tools(user_prompt: str) -> bool:
+    """Decide whether to expose the tool schemas for this message.
+
+    Returning False both prevents spurious side effects and strips ~1200
+    tokens of schema from the prompt.
+    """
+    if not TOOL_GATING:
+        return True
+
+    text = (user_prompt or "").lower()
+    if not text.strip():
+        return False
+
+    words = set(re.findall(r"[a-z']+", text))
+    if words & _TOOL_INTENT_WORDS:
+        return True
+    return any(phrase in text for phrase in _TOOL_INTENT_PHRASES)
+
+
+# ---------------------------------------------------------------------------
+#  Media intent routing
+# ---------------------------------------------------------------------------
+# "play X" is ambiguous: pressing the play button, or playing a named track.
+# llama3.2:3b resolves it wrong — asked to "play loser by tame impala" it
+# called control_media(play_pause), which toggled the media key and played
+# nothing. Descriptions alone do not fix this on a 3B model, so the choice is
+# corrected deterministically from the user's own words.
+
+_MEDIA_VERBS = r"(?:play|put on|puton|listen to|queue|start|blast|throw on)"
+
+# Words that mean "the transport button", not "a piece of music".
+_TRANSPORT_ONLY = {
+    "play", "pause", "resume", "stop", "next", "previous", "prev", "back",
+    "skip", "forward", "track", "song", "music", "it", "this", "that", "the",
+    "a", "an", "my", "some", "again", "please", "now", "one", "tune",
+}
+
+# Noise to strip off the end of an extracted query.
+_QUERY_TRAILERS = re.compile(
+    r"\b(?:on|in|via|using|through)?\s*"
+    r"(?:youtube music|yt music|youtube|ytmusic|spotify)\b.*$|"
+    r"\b(?:for me|please|thanks|thank you)\b\.?\s*$",
+    re.IGNORECASE,
+)
+
+
+def extract_media_query(user_prompt: str) -> str | None:
+    """Pull a named track/artist out of a play request.
+
+    Returns None when the user meant the transport button rather than a
+    specific piece of music.
+    """
+    text = (user_prompt or "").strip().lower()
+    if not text:
+        return None
+
+    match = re.search(_MEDIA_VERBS + r"\s+(.+)", text)
+    if not match:
+        return None
+
+    query = match.group(1).strip(" .,!?")
+    # Strip "on youtube music", "for me", "please", etc.
+    for _ in range(2):
+        query = _QUERY_TRAILERS.sub("", query).strip(" .,!?")
+
+    if not query:
+        return None
+
+    # If nothing survives except transport vocabulary, it was a button press.
+    meaningful = [w for w in re.findall(r"[a-z0-9']+", query) if w not in _TRANSPORT_ONLY]
+    if not meaningful:
+        return None
+
+    return query
+
+
+def correct_media_tool_choice(
+    name: str, args: dict[str, Any], user_prompt: str
+) -> tuple[str, dict[str, Any]]:
+    """Repair media tool selection using the user's actual wording."""
+    named_track = extract_media_query(user_prompt)
+
+    if name == "control_media" and named_track:
+        log.info("Rerouting control_media -> play_youtube_music (%r)", named_track)
+        return "play_youtube_music", {"query": named_track}
+
+    if name == "play_youtube_music":
+        query = str(args.get("query", "")).strip()
+        if not named_track and not query:
+            # "pause"/"next" misrouted to the music search.
+            log.info("Rerouting empty play_youtube_music -> control_media")
+            return "control_media", {"action": "play_pause"}
+        if named_track and not query:
+            # Model picked the right tool but dropped the argument.
+            log.info("Recovered missing play query from prompt: %r", named_track)
+            return name, {"query": named_track}
+
+    return name, args
+
+
+# ---------------------------------------------------------------------------
+#  Tool execution
+# ---------------------------------------------------------------------------
+def execute_tool(name: str, args: dict[str, Any], collection: Any = None) -> str:
+    """Run a tool behind the confirmation gate, converting failures to text."""
+    if REQUIRE_CONFIRMATION and name in CONFIRM_REQUIRED_TOOLS:
+        log.info("Tool %s blocked pending user confirmation", name)
+        return (
+            f"The '{name}' action needs the user's explicit confirmation before it can run. "
+            f"Ask the user to confirm they want this, then wait for their reply."
+        )
+    try:
+        return dispatch_tool_call(name, args, chroma_collection=collection)
+    except Exception as exc:
+        log.exception("Tool %s raised", name)
+        return f"The {name} tool failed: {exc}"
+
+
+# ---------------------------------------------------------------------------
+#  Agent loop
+# ---------------------------------------------------------------------------
+def run_agent_stream(
+    db: DatabaseManager, collection: Any, session_id: str, user_prompt: str
+) -> Iterator[str]:
+    """Stream a reply, executing tools in between passes when the model asks.
+
+    Yields plain text deltas. Raises nothing: transport failures are converted
+    into a spoken apology so the SSE stream always terminates cleanly.
+    """
+    context_messages = build_context_window(db, session_id)
+    messages = format_messages_for_ollama(db, collection, context_messages, user_prompt)
+
+    offer_tools = should_offer_tools(user_prompt)
+    log.debug("Tools %s for this turn", "offered" if offer_tools else "withheld")
+
+    for turn in range(MAX_TOOL_TURNS):
         try:
-            userInput = input("\033[36mYou: \033[0m").strip()
-        except (KeyboardInterrupt, EOFError):
-            print("\n\033[33mGoodbye.\033[0m")
-            break
+            stream = ollama.chat(
+                model=CHAT_MODEL,
+                messages=messages,
+                tools=OLLAMA_TOOLS if offer_tools else [],
+                stream=True,
+                options=OLLAMA_OPTIONS,
+                keep_alive=CHAT_KEEP_ALIVE,
+            )
 
-        if not userInput:
-            continue
+            full_ans = ""
+            collected_tool_calls: list[dict[str, Any]] = []
+            held = ""          # Buffered opening tokens that may be JSON.
+            resolved = False   # True once we know this turn is real speech.
+            suppress = False   # True after intercepting a text tool call.
 
-        # Handle slash commands
-        if userInput.lower() == '/quit':
-            print("\033[33mSession ended.\033[0m")
-            break
+            for chunk in stream:
+                calls = extract_tool_calls(chunk)
+                if calls:
+                    collected_tool_calls.extend(calls)
+                    continue
 
-        if userInput.lower() == '/good' and lastAssistantMessageId:
-            db.flag_good_message(lastAssistantMessageId)
-            print("\033[32m✓ Last response flagged as good quality.\033[0m")
-            continue
+                token = extract_chunk_content(chunk)
+                if not token or suppress:
+                    continue
+                # Some GGUF chat templates emit a stray role header first.
+                if not full_ans and not held and token.strip().lower() == "assistant":
+                    continue
 
-        if userInput.lower() == '/bad' and lastAssistantMessageId:
-            # flag_good_message sets to 1; for bad we need a direct update
-            with db.conn:
-                db.conn.execute(
-                    "UPDATE messages SET quality_flag = -1 WHERE message_id = ?",
-                    (lastAssistantMessageId,)
+                # Withhold a reply that opens like JSON until we know whether
+                # it is speech or a tool call the model typed out by hand.
+                if not resolved and not full_ans:
+                    if (held + token).lstrip().startswith(("{", "```")):
+                        held += token
+                        pseudo = parse_pseudo_tool_call(held)
+                        if pseudo:
+                            log.info("Intercepted text-emitted tool call: %s", pseudo["name"])
+                            collected_tool_calls.append(pseudo)
+                            held, suppress, resolved = "", True, True
+                            continue
+                        if len(held) < PSEUDO_CALL_CHAR_LIMIT:
+                            continue
+                        # Too long to be a tool call — release it as speech.
+                        token, held = held, ""
+                    elif held:
+                        token, held = held + token, ""
+                    resolved = True
+
+                full_ans += token
+                yield token
+
+            # Stream ended mid-buffer: emit whatever was withheld.
+            if held and not suppress:
+                full_ans += held
+                yield held
+
+        except Exception as exc:
+            log.exception("Ollama stream failed on turn %d", turn)
+            yield (
+                "I've lost contact with my local inference engine, boss. "
+                "Check that Ollama is running."
+            )
+            return
+
+        # No tools requested: this was the final answer.
+        if not collected_tool_calls:
+            if full_ans.strip():
+                asst_id = db.insert_message(session_id, "assistant", full_ans)
+                addMemoryAsync(
+                    collection,
+                    asst_id,
+                    full_ans,
+                    session_id,
+                    "assistant",
+                    datetime.now().isoformat(),
                 )
-            print("\033[31m✗ Last response flagged as bad quality.\033[0m")
-            continue
+            return
 
-        if userInput.lower().startswith('/search '):
-            keywords = userInput[8:].strip()
-            if keywords:
-                contextMessages = buildContextWindow(db, sessionId)
-                handleMemoryToolCall(db, collection, sessionId, keywords, contextMessages)
-                continue
+        # Tools requested: execute, feed results back, and loop.
+        for tool_call in collected_tool_calls:
+            name = tool_call.get("name", "")
+            args = tool_call.get("arguments", {})
+            if not isinstance(args, dict):
+                args = {}
 
-        # Step 1: Save user message to SQLite
-        userId = db.insert_message(sessionId, "user", userInput)
+            # A 3B model cannot reliably tell "press play" from "play <song>".
+            name, args = correct_media_tool_choice(name, args, user_prompt)
+            log.info("Tool call: %s(%s)", name, args)
 
-        # Step 2: Save user message to ChromaDB
-        addMemory(collection, userId, userInput, sessionId, "user", datetime.now().isoformat())
+            tool_result = execute_tool(name, args, collection)
 
-        # Step 3: Build sliding window context
-        contextMessages = buildContextWindow(db, sessionId)
+            # Stored as 'tool_call'/'tool' so build_context_window never
+            # replays them as something G.I.D.E.O.N said out loud.
+            db.insert_message(
+                session_id,
+                "tool_call",
+                f"[Tool Call: {name}]",
+                tool_name=name,
+                tool_args=json.dumps(args),
+            )
+            db.insert_message(session_id, "tool", tool_result, tool_name=name)
 
-        # Step 4: Format and stream/intercept model response
-        ollamaMessages = formatMessagesForOllama(contextMessages)
-        response, preamble, tool_call_buffer = streamAndInterceptModel(ollamaMessages)
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": full_ans,
+                    "tool_calls": [{"function": {"name": name, "arguments": args}}],
+                }
+            )
+            messages.append({"role": "tool", "content": str(tool_result), "name": name})
 
-        # Step 5: Check for tool call interception
-        if tool_call_buffer:
-            memoryMatch = MEMORY_TOOL_PATTERN.search(tool_call_buffer)
-            samayMatch = SAMAY_TOOL_PATTERN.search(tool_call_buffer)
-            
-            if memoryMatch:
-                keywords = memoryMatch.group(1).strip()
-                handleMemoryToolCall(db, collection, sessionId, keywords, contextMessages, preamble=preamble)
-            elif samayMatch:
-                subcommand = samayMatch.group(1).strip()
-                handleSamayToolCall(db, collection, sessionId, subcommand, contextMessages, preamble=preamble)
-        else:
-            # Step 6: No tool call — response has already been streamed.
-            # Step 7: Log assistant response to SQLite and ChromaDB
-            assistantId = db.insert_message(sessionId, "assistant", response)
-            addMemory(collection, assistantId, response, sessionId, "assistant", datetime.now().isoformat())
-            lastAssistantMessageId = assistantId
+    log.warning("Tool loop exhausted %d turns without a final answer", MAX_TOOL_TURNS)
+    yield "I wasn't able to finish that one, boss — the tool chain ran too long."
 
 
 def run():
-    """Entry point for the G.I.D.E.O.N orchestrator."""
-    db = DatabaseManager()
+    """Terminal CLI interactive chat mode."""
+    # The Windows console defaults to cp1252, which cannot encode the box
+    # drawing characters below or most model output (em dashes, degree signs).
+    for stream_obj in (sys.stdout, sys.stderr):
+        try:
+            stream_obj.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
+
+    db = get_db()
     collection = initMemory()
 
-    sessionId = selectSession(db)
-    chatLoop(db, collection, sessionId)
+    session_id = db.create_session("Terminal Session")
+    print("\n\033[36m╔══════════════════════════════════════╗")
+    print("║   G.I.D.E.O.N  Agentic Engine v2.0   ║")
+    print("╚══════════════════════════════════════╝\033[0m\n")
+
+    while True:
+        try:
+            inp = input("\033[36mYou: \033[0m").strip()
+        except (KeyboardInterrupt, EOFError):
+            print("\nGoodbye, boss.")
+            break
+
+        if not inp:
+            continue
+        if inp.lower() in ("/quit", "exit"):
+            break
+
+        user_id = db.insert_message(session_id, "user", inp)
+        addMemoryAsync(collection, user_id, inp, session_id, "user", datetime.now().isoformat())
+
+        print("\033[32mG.I.D.E.O.N:\033[0m ", end="", flush=True)
+        for token in run_agent_stream(db, collection, session_id, inp):
+            print(token, end="", flush=True)
+        print()
 
     db.close()
 

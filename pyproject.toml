@@ -1,12 +1,33 @@
 [project]
 name = "g-i-d-e-o-n"
 version = "0.1.0"
-description = "Add your description here"
+description = "Guided Intelligence Does Everything One Needs — a local-first, privacy-preserving AI assistant"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "chromadb",
+    "comtypes>=1.4.16",
+    "duckduckgo-search>=8.1.1",
     "edge-tts>=7.2.8",
+    # fastapi/uvicorn/pydantic were only present transitively via chromadb.
+    # Declared explicitly so a chromadb bump cannot break the web server.
+    "fastapi>=0.115",
     "ollama",
+    "piper-tts>=1.6.0",
     "psutil>=7.2.2",
+    "pycaw>=20251023",
+    "pydantic>=2.9",
+    "pypdf>=6.14.2",
+    "pyperclip>=1.11.0",
+    "uvicorn>=0.32",
+    "ytmusicapi>=1.12.1",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

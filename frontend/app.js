@@ -122,15 +122,37 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentSessionId = null;
     let activeTypewriter = null;
 
-    // ─── Audio Engine & Visualizer for Lip Sync ───
+    // ─── Audio Engine, FIFO Queue & Visualizer for Lip Sync ───
     let audioContext = null;
     let analyser = null;
     let currentAudio = null;
     let audioSource = null;
     let uAudioVolumeValue = 0.0;
     let audioDataArray = null;
+    
+    let audioQueue = [];
+    let isPlayingAudio = false;
 
-    function playAudio(url) {
+    function stopAndClearAudio() {
+        audioQueue = [];
+        if (currentAudio) {
+            currentAudio.pause();
+            currentAudio.src = "";
+        }
+        isPlayingAudio = false;
+    }
+
+    function enqueueAudio(url) {
+        audioQueue.push(url);
+        processAudioQueue();
+    }
+
+    function processAudioQueue() {
+        if (isPlayingAudio || audioQueue.length === 0) return;
+
+        isPlayingAudio = true;
+        const url = audioQueue.shift();
+
         try {
             if (currentAudio) {
                 currentAudio.pause();
@@ -150,16 +172,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
             currentAudio = new Audio(url);
             currentAudio.crossOrigin = "anonymous";
-            
+
             audioSource = audioContext.createMediaElementSource(currentAudio);
             audioSource.connect(analyser);
             analyser.connect(audioContext.destination);
 
+            currentAudio.onended = () => {
+                isPlayingAudio = false;
+                processAudioQueue();
+            };
+
             currentAudio.play().catch(e => {
                 console.error("Audio playback failed:", e);
+                isPlayingAudio = false;
+                processAudioQueue();
             });
         } catch (err) {
-            console.error("Failed to initialize AudioContext / play audio:", err);
+            console.error("Failed to play audio chunk:", err);
+            isPlayingAudio = false;
+            processAudioQueue();
         }
     }
 
@@ -679,6 +710,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (historyView) historyView.scrollTop = historyView.scrollHeight;
         }
 
+        stopAndClearAudio();
         try {
             const res = await fetch('/api/chat', {
                 method: 'POST',
@@ -731,7 +763,19 @@ document.addEventListener('DOMContentLoaded', () => {
                             }
                         }
                         if (parsed.audio_url) {
-                            playAudio(parsed.audio_url);
+                            enqueueAudio(parsed.audio_url);
+                        }
+                        if (parsed.open_url) {
+                            window.open(parsed.open_url, '_blank');
+                        }
+                        if (parsed.error) {
+                            // The server could not raise an HTTP error once the
+                            // stream had started, so it sends this instead.
+                            console.error('G.I.D.E.O.N core error:', parsed.error);
+                            if (hudText) hudText.textContent = fullText
+                                ? `${fullText}\n\n[interrupted: ${parsed.error}]`
+                                : `Error: ${parsed.error}`;
+                            triggerAlert("G.I.D.E.O.N: Core processing failure.");
                         }
                     } catch (e) {
                         console.error('Failed to parse SSE line:', e);
@@ -887,6 +931,38 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Initialize Sessions and Chat Connection on load
+    // Persistent EventSource listener for proactive system notifications (reminders)
+    function initProactiveEvents() {
+        try {
+            const eventSource = new EventSource('/api/events');
+            eventSource.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'reminder' || data.type === 'reminder_alert') {
+                        const alertMsg = `🔔 REMINDER: ${data.text}`;
+                        triggerAlert(alertMsg);
+                        triggerReaction(2000);
+                        // hud-text is looked up here rather than closed over:
+                        // the chat handler's local was not in scope.
+                        const hud = document.getElementById('hud-text');
+                        if (hud) hud.textContent = alertMsg;
+                        if (data.audio_url) enqueueAudio(data.audio_url);
+                    }
+                } catch (e) {
+                    console.error("Failed to parse proactive SSE event:", e);
+                }
+            };
+            eventSource.onerror = (err) => {
+                console.warn("Proactive SSE stream lost, retrying in 5s...", err);
+                eventSource.close();
+                setTimeout(initProactiveEvents, 5000);
+            };
+        } catch (e) {
+            console.error("Could not initialize EventSource /api/events:", e);
+        }
+    }
+
+    // Initialize Sessions, Chat Connection, and Proactive Events on load
     loadSessions();
+    initProactiveEvents();
 });

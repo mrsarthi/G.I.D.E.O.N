@@ -27,6 +27,14 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
+# Piper voice models (60MB+ binaries, downloaded not versioned)
+model/*.onnx
+model/*.onnx.json
+
 # Agent/Orchestrator Caches/Logs
+logs/
+*.log
+static/audio/
+static/test_piper.wav
 .macco/
 macco_analysis.md

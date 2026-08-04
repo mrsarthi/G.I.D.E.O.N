@@ -1,326 +1,573 @@
-from contextlib import asynccontextmanager
+"""
+G.I.D.E.O.N FastAPI Backend
+
+Three things here are load-bearing:
+
+* Speech is synthesised per sentence while the model is still generating, so
+  G.I.D.E.O.N starts talking after the first sentence instead of after the
+  whole answer.
+* /api/events is the always-on channel that lets G.I.D.E.O.N speak first
+  (due reminders, hardware warnings).
+* Only frontend/ and static/ are served. The old mount exposed the entire
+  project directory, gideon.db included.
+"""
+
+from __future__ import annotations
+
+import asyncio
 import json
 import os
+import re
+import time
 import uuid
-import asyncio
-import edge_tts
+import wave
+from concurrent.futures import Future, ThreadPoolExecutor
+from contextlib import asynccontextmanager
+from datetime import datetime
+from typing import Iterator, Optional
+
 import psutil
-import shutil
-import subprocess
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional
-from datetime import datetime
 
-from db import DatabaseManager
 import memory
 import orchestrator
+from config import (
+    ALLOW_CLOUD_TTS,
+    AUDIO_DIR,
+    AUDIO_RETENTION_HOURS,
+    CORS_ORIGINS,
+    FRONTEND_DIR,
+    MIN_TTS_SENTENCE_CHARS,
+    PIPER_MODEL_DIR,
+    REMINDER_POLL_SECONDS,
+    STATIC_DIR,
+    TTS_VOICE_FALLBACK,
+    get_logger,
+    setup_logging,
+)
+from db import close_db, get_db
+from events import bus
 
-def generate_tts_audio(text: str, session_id: str) -> str:
-    """Generates an MP3 file using edge-tts from the response text and returns the URL path."""
-    clean_text = text.replace("*", "").replace("_", "").replace("`", "").strip()
-    if not clean_text:
-        return ""
-    audio_dir = "static/audio"
-    os.makedirs(audio_dir, exist_ok=True)
-    filename = f"{session_id}_{uuid.uuid4().hex}.mp3"
-    filepath = os.path.join(audio_dir, filename)
-    
-    # Use en-GB-SoniaNeural for G.I.D.E.O.N's voice
-    voice = "en-GB-SoniaNeural"
-    
-    async def _save():
-        communicate = edge_tts.Communicate(clean_text, voice)
-        await communicate.save(filepath)
-        
-    asyncio.run(_save())
-    return f"/static/audio/{filename}"
+setup_logging()
+log = get_logger("gideon.server")
 
-# Global database instances
-db_manager = None
+_tts_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="tts_worker")
+
+piper_voice = None
 chroma_collection = None
 
+# Sentence boundary: terminator followed by whitespace.
+_SENTENCE_SPLIT = re.compile(r"(?<=[.!?…])\s+")
+_MARKUP = re.compile(r"[*_`#]+")
+
+
+# ---------------------------------------------------------------------------
+#  Text-to-speech
+# ---------------------------------------------------------------------------
+def init_piper_voice():
+    """Load the local Piper ONNX voice into RAM (no VRAM cost)."""
+    global piper_voice
+    try:
+        from piper import PiperVoice
+    except ImportError:
+        log.warning("piper-tts is not installed; local speech disabled")
+        return
+
+    onnx_files = sorted(PIPER_MODEL_DIR.glob("*.onnx"))
+    if not onnx_files:
+        log.warning("No Piper .onnx voice found in %s", PIPER_MODEL_DIR)
+        return
+
+    model_path = onnx_files[0]
+    if not model_path.with_suffix(".onnx.json").exists():
+        log.warning("Piper voice %s is missing its .json config", model_path.name)
+        return
+
+    try:
+        log.info("Loading Piper voice %s", model_path.name)
+        piper_voice = PiperVoice.load(str(model_path))
+        log.info("Piper voice ready (CPU, 0 MB VRAM)")
+    except Exception as exc:
+        log.error("Piper initialisation failed: %s", exc)
+
+
+def sweep_audio_dir():
+    """Delete generated speech older than the retention window.
+
+    Without this the directory grows without bound; it had reached 31 MB.
+    """
+    AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+    cutoff = time.time() - (AUDIO_RETENTION_HOURS * 3600)
+    removed = 0
+    for path in AUDIO_DIR.iterdir():
+        if not path.is_file():
+            continue
+        try:
+            if path.stat().st_mtime < cutoff:
+                path.unlink()
+                removed += 1
+        except OSError as exc:
+            log.debug("Could not remove %s: %s", path, exc)
+    if removed:
+        log.info("Swept %d expired audio file(s)", removed)
+
+
+def _clean_for_speech(text: str) -> str:
+    return _MARKUP.sub("", text).strip()
+
+
+def generate_tts_audio(text: str, session_id: str) -> str:
+    """Synthesise one utterance and return its served URL ('' on failure)."""
+    clean_text = _clean_for_speech(text)
+    if not clean_text:
+        return ""
+
+    AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+
+    if piper_voice is not None:
+        try:
+            filename = f"{session_id}_{uuid.uuid4().hex[:8]}.wav"
+            filepath = AUDIO_DIR / filename
+            with wave.open(str(filepath), "wb") as wf:
+                first = True
+                for chunk in piper_voice.synthesize(clean_text):
+                    if first:
+                        wf.setnchannels(chunk.sample_channels)
+                        wf.setsampwidth(chunk.sample_width)
+                        wf.setframerate(chunk.sample_rate)
+                        first = False
+                    wf.writeframes(chunk.audio_int16_bytes)
+            return f"/static/audio/{filename}"
+        except Exception as exc:
+            log.error("Piper synthesis failed: %s", exc)
+
+    if not ALLOW_CLOUD_TTS:
+        return ""
+
+    # Opt-in cloud fallback. Off by default: it sends your text to Microsoft.
+    try:
+        import edge_tts
+
+        filename = f"{session_id}_{uuid.uuid4().hex[:8]}.mp3"
+        filepath = AUDIO_DIR / filename
+
+        def _worker():
+            loop = asyncio.new_event_loop()
+            try:
+                asyncio.set_event_loop(loop)
+                comm = edge_tts.Communicate(clean_text, TTS_VOICE_FALLBACK)
+                loop.run_until_complete(comm.save(str(filepath)))
+            finally:
+                loop.close()
+
+        _tts_executor.submit(_worker).result(timeout=15)
+        return f"/static/audio/{filename}"
+    except Exception as exc:
+        log.error("Cloud TTS fallback failed: %s", exc)
+        return ""
+
+
+def split_ready_sentences(buffer: str) -> tuple[list[str], str]:
+    """Split a streaming buffer into complete sentences plus a remainder.
+
+    Short fragments are merged forward so a stray "Yes." does not become its
+    own audio file.
+    """
+    parts = _SENTENCE_SPLIT.split(buffer)
+    if len(parts) < 2:
+        return [], buffer
+
+    *complete, remainder = parts
+    sentences: list[str] = []
+    carry = ""
+    for part in complete:
+        candidate = f"{carry} {part}".strip() if carry else part
+        if len(candidate) < MIN_TTS_SENTENCE_CHARS:
+            carry = candidate
+            continue
+        sentences.append(candidate)
+        carry = ""
+
+    if carry:
+        remainder = f"{carry} {remainder}".strip()
+    return sentences, remainder
+
+
+# ---------------------------------------------------------------------------
+#  Background daemons
+# ---------------------------------------------------------------------------
+async def reminder_daemon():
+    """Fire due reminders onto the event bus.
+
+    This is what makes set_reminder more than a write-only database call.
+    """
+    db = get_db()
+    log.info("Reminder daemon started (%ds poll)", REMINDER_POLL_SECONDS)
+    while True:
+        try:
+            await asyncio.sleep(REMINDER_POLL_SECONDS)
+            due = await asyncio.to_thread(db.get_due_reminders)
+            for reminder_id, text, remind_at in due:
+                await asyncio.to_thread(db.mark_reminder_completed, reminder_id)
+                spoken = f"Reminder, boss: {text}"
+                audio_url = await asyncio.to_thread(generate_tts_audio, spoken, "reminder")
+                bus.publish(
+                    "reminder",
+                    {
+                        "reminder_id": reminder_id,
+                        "text": text,
+                        "scheduled_for": remind_at,
+                        "message": spoken,
+                        "audio_url": audio_url,
+                    },
+                )
+                log.info("Fired reminder #%s", reminder_id)
+        except asyncio.CancelledError:
+            log.info("Reminder daemon stopped")
+            raise
+        except Exception:
+            log.exception("Reminder daemon iteration failed")
+
+
+# ---------------------------------------------------------------------------
+#  Lifespan
+# ---------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global db_manager, chroma_collection
-    db_manager = DatabaseManager()
+    global chroma_collection
+
+    bus.bind_loop(asyncio.get_running_loop())
+    get_db()
     chroma_collection = memory.initMemory()
-    yield
-    if db_manager:
-        db_manager.close()
+    init_piper_voice()
+    sweep_audio_dir()
+
+    daemon = asyncio.create_task(reminder_daemon())
+    log.info("G.I.D.E.O.N online")
+
+    try:
+        yield
+    finally:
+        daemon.cancel()
+        try:
+            await daemon
+        except asyncio.CancelledError:
+            pass
+        close_db()
+        _tts_executor.shutdown(wait=False)
+        log.info("G.I.D.E.O.N offline")
+
 
 app = FastAPI(title="G.I.D.E.O.N API Server", lifespan=lifespan)
 
-# Enable CORS for local development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["*"],
 )
 
-# Pydantic Schemas
+
 class MessageRequest(BaseModel):
     session_id: str
     message: str
 
+
 class SessionCreate(BaseModel):
     name: Optional[str] = None
 
-# =====================================================================
-#  API ENDPOINTS
-# =====================================================================
 
+class ProfileUpdateRequest(BaseModel):
+    key: str
+    value: str
+
+
+# ---------------------------------------------------------------------------
+#  Sessions
+# ---------------------------------------------------------------------------
 @app.get("/api/sessions")
 def list_sessions():
-    """Returns a list of all active chat sessions sorted by creation time."""
     try:
-        cursor = db_manager.conn.cursor()
-        cursor.execute("SELECT session_id, session_name, created_at FROM session ORDER BY created_at DESC")
-        sessions = cursor.fetchall()
-        return [
-            {"session_id": s[0], "session_name": s[1], "created_at": s[2]}
-            for s in sessions
-        ]
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return get_db().list_sessions()
+    except Exception as exc:
+        log.exception("Listing sessions failed")
+        raise HTTPException(status_code=500, detail=str(exc))
+
 
 @app.post("/api/sessions")
 def create_session(data: SessionCreate):
-    """Creates a new session and returns the session metadata."""
     try:
-        name = data.name.strip() if data.name else None
-        if not name:
-            name = f"Session {datetime.now().strftime('%Y-%m-%d %H:%M')}"
-        session_id = db_manager.create_session(name)
+        name = (data.name or "").strip() or f"Session {datetime.now():%Y-%m-%d %H:%M}"
+        session_id = get_db().create_session(name)
         return {"session_id": session_id, "session_name": name}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        log.exception("Creating session failed")
+        raise HTTPException(status_code=500, detail=str(exc))
+
 
 @app.delete("/api/sessions/{session_id}")
 def delete_session(session_id: str):
-    """Deletes a session and automatically cascades message deletes."""
     try:
-        db_manager.delete_session(session_id)
-        # Also clean up the vector store entries for this session
-        try:
-            chroma_collection.delete(where={"session_id": session_id})
-        except Exception as ce:
-            print("[ChromaDB] Cleanup warning:", ce)
+        get_db().delete_session(session_id)
+        if chroma_collection is not None:
+            memory.deleteSessionMemories(chroma_collection, session_id)
         return {"status": "success", "message": f"Session {session_id} deleted."}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        log.exception("Deleting session failed")
+        raise HTTPException(status_code=500, detail=str(exc))
+
 
 @app.get("/api/sessions/{session_id}/history")
 def get_session_history(session_id: str):
-    """Fetches the chronological message history of a specific session."""
     try:
-        cursor = db_manager.conn.cursor()
-        cursor.execute(
-            """SELECT role, content, timestamp, tool_name 
-               FROM messages 
-               WHERE session_id = ? 
-               ORDER BY message_id ASC""",
-            (session_id,)
-        )
-        messages = cursor.fetchall()
-        return [
-            {"role": m[0], "content": m[1], "timestamp": m[2], "tool_name": m[3]}
-            for m in messages
-        ]
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return get_db().get_history(session_id)
+    except Exception as exc:
+        log.exception("Fetching history failed")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ---------------------------------------------------------------------------
+#  Profile
+# ---------------------------------------------------------------------------
+@app.get("/api/profile")
+def get_user_profile():
+    try:
+        return get_db().get_user_profile()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/api/profile")
+def update_user_profile(data: ProfileUpdateRequest):
+    try:
+        db = get_db()
+        db.set_user_profile(data.key, data.value)
+        return {"status": "success", "profile": db.get_user_profile()}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ---------------------------------------------------------------------------
+#  Chat
+# ---------------------------------------------------------------------------
+def _sse(payload: dict) -> str:
+    return f"data: {json.dumps(payload)}\n\n"
+
 
 @app.post("/api/chat")
 def chat(data: MessageRequest):
-    """Processes a user message, runs the orchestrator pipeline, and intercepts tool calls with streaming support."""
-    try:
-        session_id = data.session_id
-        message = data.message.strip()
-        
-        if not message:
-            raise HTTPException(status_code=400, detail="Message content cannot be empty.")
-            
-        # Step 1: Log user message to SQLite DB
-        user_id = db_manager.insert_message(session_id, "user", message)
-        
-        # Step 2: Log user message to ChromaDB Memory
-        memory.addMemory(chroma_collection, user_id, message, session_id, "user", datetime.now().isoformat())
-        
-        # Step 3: Gather the conversation context window
-        context_messages = orchestrator.buildContextWindow(db_manager, session_id)
-        
-        # Step 4: Prep and format history for Ollama
-        ollama_messages = orchestrator.formatMessagesForOllama(context_messages)
-        
-        def chat_generator():
-            # Step 5: Start streaming the first pass response
-            stream1 = orchestrator.streamModelGenerator(ollama_messages)
-            
-            preamble = ""
-            tool_call_buffer = ""
-            
-            for kind, text in orchestrator.split_stream_at_tool_call(stream1):
-                if kind == 'text':
-                    preamble += text
-                    yield f"data: {json.dumps({'text': text})}\n\n"
-                elif kind == 'tool_call':
-                    tool_call_buffer = text
-            
-            full_text = ""
-            if tool_call_buffer:
-                # Scan for tool call patterns
-                memory_match = orchestrator.MEMORY_TOOL_PATTERN.search(tool_call_buffer)
-                samay_match = orchestrator.SAMAY_TOOL_PATTERN.search(tool_call_buffer)
-                
-                if memory_match:
-                    keywords = memory_match.group(1).strip()
-                    for token in orchestrator.streamMemoryToolCall(
-                        db_manager, chroma_collection, session_id, keywords, context_messages, preamble=preamble
-                    ):
-                        full_text += token
-                        yield f"data: {json.dumps({'text': token})}\n\n"
-                elif samay_match:
-                    subcommand = samay_match.group(1).strip()
-                    for token in orchestrator.streamSamayToolCall(
-                        db_manager, chroma_collection, session_id, subcommand, context_messages, preamble=preamble
-                    ):
-                        full_text += token
-                        yield f"data: {json.dumps({'text': token})}\n\n"
-                else:
-                    # Fallback if pattern match fails: stream the raw buffer
-                    yield f"data: {json.dumps({'text': tool_call_buffer})}\n\n"
-                    full_text = tool_call_buffer
-                    fallback_text = preamble + tool_call_buffer
-                    # Log response to SQLite & ChromaDB
-                    assistant_id = db_manager.insert_message(session_id, "assistant", fallback_text)
-                    memory.addMemory(chroma_collection, assistant_id, fallback_text, session_id, "assistant", datetime.now().isoformat())
-            else:
-                # Log response to SQLite & ChromaDB
-                assistant_id = db_manager.insert_message(session_id, "assistant", preamble)
-                memory.addMemory(chroma_collection, assistant_id, preamble, session_id, "assistant", datetime.now().isoformat())
+    """Stream a reply as SSE, speaking each sentence as it completes."""
+    db = get_db()
+    session_id = data.session_id
+    message = data.message.strip()
 
-            # Generate and stream audio if text is present
-            final_response = preamble + full_text
-            if final_response.strip():
+    if not message:
+        raise HTTPException(status_code=400, detail="Message content cannot be empty.")
+    if not db.session_exists(session_id):
+        raise HTTPException(status_code=404, detail="Unknown session_id.")
+
+    user_id = db.insert_message(session_id, "user", message)
+    orchestrator.addMemoryAsync(
+        chroma_collection, user_id, message, session_id, "user", datetime.now().isoformat()
+    )
+
+    def chat_generator() -> Iterator[str]:
+        buffer = ""
+        pending: list[Future] = []
+
+        def drain(block: bool) -> Iterator[str]:
+            """Emit finished audio in submission order."""
+            while pending:
+                future = pending[0]
+                if not block and not future.done():
+                    break
                 try:
-                    audio_url = generate_tts_audio(final_response, session_id)
-                    if audio_url:
-                        yield f"data: {json.dumps({'audio_url': audio_url})}\n\n"
-                except Exception as tts_err:
-                    print(f"[TTS Error] Could not generate audio: {tts_err}")
-                
-        return StreamingResponse(
-            chat_generator(),
-            media_type="text/event-stream",
-            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
-        )
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+                    url = future.result(timeout=30 if block else None)
+                except Exception as exc:
+                    log.error("Speech synthesis failed: %s", exc)
+                    url = ""
+                pending.pop(0)
+                if url:
+                    yield _sse({"audio_url": url})
 
-# Helpers for system metrics
-_last_net_bytes = None
-_last_net_time = None
+        try:
+            for token in orchestrator.run_agent_stream(
+                db, chroma_collection, session_id, message
+            ):
+                yield _sse({"text": token})
+                buffer += token
 
-def get_network_throughput():
+                sentences, buffer = split_ready_sentences(buffer)
+                for sentence in sentences:
+                    # Synthesis runs concurrently with continued generation.
+                    pending.append(
+                        _tts_executor.submit(generate_tts_audio, sentence, session_id)
+                    )
+
+                yield from drain(block=False)
+
+            tail = buffer.strip()
+            if tail:
+                pending.append(_tts_executor.submit(generate_tts_audio, tail, session_id))
+
+            yield from drain(block=True)
+            yield _sse({"done": True})
+
+        except Exception as exc:
+            # The response has already started, so an HTTPException here would
+            # never reach the client. Send an explicit error event instead.
+            log.exception("Chat stream failed")
+            yield _sse({"error": str(exc)})
+            yield _sse({"done": True})
+
+    return StreamingResponse(
+        chat_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+# ---------------------------------------------------------------------------
+#  Event stream
+# ---------------------------------------------------------------------------
+@app.get("/api/events")
+async def event_stream():
+    """Always-on channel for unprompted messages (reminders, alerts)."""
+    queue = bus.subscribe()
+
+    async def generator():
+        try:
+            yield ": connected\n\n"
+            while True:
+                try:
+                    message = await asyncio.wait_for(queue.get(), timeout=20)
+                    yield f"data: {message}\n\n"
+                except asyncio.TimeoutError:
+                    # Comment frame keeps proxies and browsers from timing out.
+                    yield ": keepalive\n\n"
+        finally:
+            bus.unsubscribe(queue)
+
+    return StreamingResponse(
+        generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+# ---------------------------------------------------------------------------
+#  Metrics
+# ---------------------------------------------------------------------------
+_last_net_bytes: int | None = None
+_last_net_time: float | None = None
+
+
+def get_network_throughput() -> float:
     global _last_net_bytes, _last_net_time
-    import time
     try:
         counters = psutil.net_io_counters()
         current_bytes = counters.bytes_sent + counters.bytes_recv
         current_time = time.time()
-        
+
         if _last_net_bytes is None:
-            _last_net_bytes = current_bytes
-            _last_net_time = current_time
+            _last_net_bytes, _last_net_time = current_bytes, current_time
             return 0.1
-            
+
         elapsed = current_time - _last_net_time
         if elapsed <= 0:
             return 0.1
-            
-        bytes_delta = current_bytes - _last_net_bytes
-        # Megabits per second
-        mbps = round((bytes_delta * 8) / (1024 * 1024 * elapsed), 1)
-        
-        _last_net_bytes = current_bytes
-        _last_net_time = current_time
-        
-        return max(0.5, mbps)
+
+        mbps = round(((current_bytes - _last_net_bytes) * 8) / (1024 * 1024 * elapsed), 1)
+        _last_net_bytes, _last_net_time = current_bytes, current_time
+        return max(0.0, mbps)
     except Exception:
-        return 840.0
+        return 0.0
+
 
 @app.get("/api/metrics")
 def get_system_metrics():
-    """Fetches exact real-time system metrics (CPU, RAM, GPU, network, latency) from host."""
+    """Real-time host telemetry for the HUD."""
     try:
-        # CPU Usage
         cpu_percent = psutil.cpu_percent(interval=None)
-        
-        # RAM Usage
         virtual_mem = psutil.virtual_memory()
-        ram_used = round(virtual_mem.used / (1024 ** 3), 1)
-        ram_total = round(virtual_mem.total / (1024 ** 3), 1)
-        
-        # GPU Usage (NVIDIA fallback to approximated usage)
-        gpu_percent = 0
-        if shutil.which("nvidia-smi"):
-            try:
+
+        gpu_percent = gpu_vram_used = gpu_vram_total = gpu_temp = 0
+        try:
+            import shutil
+            import subprocess
+
+            if shutil.which("nvidia-smi"):
                 res = subprocess.check_output(
-                    ["nvidia-smi", "--query-gpu=utilization.gpu", "--format=csv,noheader,nounits"],
+                    [
+                        "nvidia-smi",
+                        "--query-gpu=utilization.gpu,memory.used,memory.total,temperature.gpu",
+                        "--format=csv,noheader,nounits",
+                    ],
                     text=True,
-                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+                    timeout=5,
+                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
                 )
-                gpu_percent = int(res.strip())
-            except Exception:
-                gpu_percent = int(cpu_percent * 0.4)
-        else:
-            gpu_percent = int(cpu_percent * 0.4)
-            
-        # SQLite Database Query Latency
-        start_time = datetime.now()
-        if db_manager and db_manager.conn:
-            db_manager.conn.execute("SELECT 1").fetchone()
-        latency_ms = int((datetime.now() - start_time).total_seconds() * 1000)
-        if latency_ms == 0:
-            latency_ms = 1
-            
-        # Network Speed
-        flux_mbps = get_network_throughput()
-        
-        # Disk health status
+                util, used, total, temp = [p.strip() for p in res.strip().split(",")]
+                gpu_percent = int(util)
+                gpu_vram_used = int(used)
+                gpu_vram_total = int(total)
+                gpu_temp = int(temp)
+        except Exception as exc:
+            log.debug("GPU telemetry unavailable: %s", exc)
+
+        start = time.perf_counter()
+        get_db().ping()
+        latency_ms = max(1, int((time.perf_counter() - start) * 1000))
+
         drive_status = "Stable"
         try:
-            usage = psutil.disk_usage('.')
-            if usage.percent >= 95.0:
+            if psutil.disk_usage(".").percent >= 95.0:
                 drive_status = "Warning"
         except Exception:
             pass
-            
+
         return {
             "cpu": cpu_percent,
             "gpu": gpu_percent,
-            "ram_used": ram_used,
-            "ram_total": ram_total,
+            "gpu_temp": gpu_temp,
+            "vram_used": gpu_vram_used,
+            "vram_total": gpu_vram_total,
+            "ram_used": round(virtual_mem.used / 1024**3, 1),
+            "ram_total": round(virtual_mem.total / 1024**3, 1),
             "latency": latency_ms,
-            "flux": flux_mbps,
-            "drive": drive_status
+            "flux": get_network_throughput(),
+            "drive": drive_status,
         }
-    except Exception as e:
-        return {
-            "cpu": 25.0,
-            "gpu": 10.0,
-            "ram_used": 4.8,
-            "ram_total": 16.0,
-            "latency": 5,
-            "flux": 840.0,
-            "drive": "Stable"
-        }
+    except Exception:
+        log.exception("Metrics collection failed")
+        raise HTTPException(status_code=500, detail="Metrics unavailable")
 
-# Serve frontend dashboard files (Html, Css, Js, Glb) at root
-app.mount("/", StaticFiles(directory=".", html=True), name="static")
+
+@app.get("/api/health")
+def health():
+    return {
+        "status": "ok",
+        "piper": piper_voice is not None,
+        "vector_documents": chroma_collection.count() if chroma_collection else 0,
+        "event_subscribers": bus.subscriber_count,
+    }
+
+
+# ---------------------------------------------------------------------------
+#  Static assets
+# ---------------------------------------------------------------------------
+# Only these two directories are reachable. Serving the project root exposed
+# gideon.db, the ChromaDB store and every source file.
+STATIC_DIR.mkdir(parents=True, exist_ok=True)
+AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+if FRONTEND_DIR.is_dir():
+    app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
+else:  # pragma: no cover - first run before the frontend is moved
+    log.error("Frontend directory %s is missing", FRONTEND_DIR)
