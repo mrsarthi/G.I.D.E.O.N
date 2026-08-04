@@ -14,9 +14,14 @@ from typing import Any, Callable
 
 from config import get_logger
 from tools.desktop import get_system_status, launch_app, search_files
+from tools.finance import get_financial_data
+from tools.geolocation import get_ip_info
+from tools.knowledge import query_wolfram_alpha
 from tools.media_and_docs import control_media, control_volume, read_document
+from tools.news import get_hackernews
 from tools.reminders import list_reminders, set_reminder
 from tools.samay import execute as samay_execute
+from tools.weather import get_weather
 from tools.web_and_clipboard import get_clipboard, search_web, set_clipboard
 from tools.yt_music import play_youtube_music, search_youtube_music
 
@@ -236,6 +241,98 @@ OLLAMA_TOOLS: list[dict[str, Any]] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_weather",
+            "description": "Fetch live weather conditions and daily temperature forecast. Call when user asks about weather, temperature, rain, or forecast for a city or local area.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "location": {
+                        "type": "string",
+                        "description": "City or location name (e.g. 'Tokyo', 'London', 'New York'). Omit for current location.",
+                    }
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_financial_data",
+            "description": "Fetch stock quotes, market indices, crypto prices, financial metrics, or company news via yfinance. Call when user asks about market quotes, stock prices, financial news, or crypto.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "symbol": {
+                        "type": "string",
+                        "description": "Ticker symbol (e.g. 'AAPL', 'TSLA', 'BTC-USD', 'NVDA', '^GSPC').",
+                    },
+                    "data_type": {
+                        "type": "string",
+                        "enum": ["summary", "news", "financials"],
+                        "description": "Type of market data to fetch.",
+                    },
+                },
+                "required": ["symbol"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_hackernews",
+            "description": "Fetch top tech news stories, Ask HN, Show HN, or recent posts from HackerNews. Call when user asks for tech news or HackerNews stories.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "category": {
+                        "type": "string",
+                        "enum": ["top", "new", "best", "ask", "show", "jobs"],
+                        "description": "HackerNews category.",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Number of stories (1-10, default 5).",
+                    },
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_ip_info",
+            "description": "Lookup IP address geolocation, ISP, and network details. Call when user asks for their public IP, location info, or IP lookup.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ip_address": {
+                        "type": "string",
+                        "description": "Optional IP address to look up. Omit for current device public IP.",
+                    }
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "query_wolfram_alpha",
+            "description": "Query Wolfram Alpha for math calculations, scientific facts, conversions, or factual questions. Call when user asks for math/computational answers or Wolfram queries.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The math equation, scientific query, or factual question.",
+                    }
+                },
+                "required": ["query"],
+            },
+        },
+    },
 ]
 
 # Derived from the schemas so the two can never drift apart.
@@ -323,6 +420,34 @@ def _handle_time_date(args: dict[str, Any]) -> str:
     return samay_execute(_first_arg(args, "subcommand", default="datetime"))
 
 
+def _handle_get_weather(args: dict[str, Any]) -> str:
+    return get_weather(_first_arg(args, "location", "city", "place", default=None))
+
+
+def _handle_get_financial_data(args: dict[str, Any]) -> str:
+    return get_financial_data(
+        _first_arg(args, "symbol", "ticker", "stock"),
+        _first_arg(args, "data_type", "type", default="summary"),
+    )
+
+
+def _handle_get_hackernews(args: dict[str, Any]) -> str:
+    limit = args.get("limit")
+    try:
+        limit = int(limit) if limit is not None else 5
+    except (TypeError, ValueError):
+        limit = 5
+    return get_hackernews(_first_arg(args, "category", "cat", default="top"), limit)
+
+
+def _handle_get_ip_info(args: dict[str, Any]) -> str:
+    return get_ip_info(_first_arg(args, "ip_address", "ip", default=None))
+
+
+def _handle_query_wolfram_alpha(args: dict[str, Any]) -> str:
+    return query_wolfram_alpha(_first_arg(args, "query", "q", "input"))
+
+
 _HANDLERS: dict[str, Callable[[dict[str, Any]], str]] = {
     "get_system_status": _handle_system_status,
     "set_reminder": _handle_set_reminder,
@@ -338,6 +463,11 @@ _HANDLERS: dict[str, Callable[[dict[str, Any]], str]] = {
     "search_youtube_music": _handle_search_youtube_music,
     "play_youtube_music": _handle_play_youtube_music,
     "get_time_date": _handle_time_date,
+    "get_weather": _handle_get_weather,
+    "get_financial_data": _handle_get_financial_data,
+    "get_hackernews": _handle_get_hackernews,
+    "get_ip_info": _handle_get_ip_info,
+    "query_wolfram_alpha": _handle_query_wolfram_alpha,
 }
 
 

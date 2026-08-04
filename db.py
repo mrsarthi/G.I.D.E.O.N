@@ -137,6 +137,20 @@ class DatabaseManager:
             )
         return session_id
 
+    def ensure_session(self, session_id: str, session_name: str = "Session") -> str:
+        """Create a session with a caller-supplied id if it does not exist.
+
+        Needed for external channels (Telegram) that derive a stable session id
+        from the chat id. Messages carry a foreign key to session, so inserting
+        one for an unknown session raises IntegrityError.
+        """
+        with self._lock, self.conn:
+            self.conn.execute(
+                "INSERT OR IGNORE INTO session (session_id, session_name) VALUES (?, ?)",
+                (session_id, session_name),
+            )
+        return session_id
+
     def session_exists(self, session_id: str) -> bool:
         with self._lock:
             row = self.conn.execute(

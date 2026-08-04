@@ -87,3 +87,51 @@ def test_gating_can_be_disabled():
         assert should_offer_tools("hi") is True
     finally:
         orchestrator.TOOL_GATING = original
+
+
+# ---------------------------------------------------------------------------
+#  The five tools added later must be reachable through the gate
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "message",
+    [
+        # weather (Open-Meteo)
+        "what's the weather in Tokyo?",
+        "is it going to rain tomorrow",
+        "how cold is it outside",
+        # markets (yfinance)
+        "how is Bitcoin doing today?",
+        "AAPL quote",
+        "check stock price for TSLA",
+        "whats the market doing",
+        # HackerNews
+        "show me top stories on hacker news",
+        "latest tech headlines",
+        # geolocation (IP-API)
+        "what is my IP and location?",
+        "where am i right now",
+        # Wolfram Alpha
+        "what is 45 times 892",
+        "12 * 7",
+        "how far is the moon",
+        "convert 30 celsius to fahrenheit",
+        "ask wolfram alpha the distance to mars",
+    ],
+)
+def test_new_tool_requests_reach_the_tools(message):
+    """Gating was written for 11 tools; five more were added afterwards."""
+    assert should_offer_tools(message) is True
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "how does attention work",
+        "explain how a transformer is trained",
+        "what do you think about that",
+        "who are you",
+    ],
+)
+def test_broad_question_words_still_do_not_open_tools(message):
+    """'how' and 'where' are ordinary conversation, not tool intent."""
+    assert should_offer_tools(message) is False

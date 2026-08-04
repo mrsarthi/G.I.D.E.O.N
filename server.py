@@ -233,6 +233,9 @@ async def reminder_daemon():
             log.exception("Reminder daemon iteration failed")
 
 
+from telegram_bot import GideonTelegramDaemon
+
+
 # ---------------------------------------------------------------------------
 #  Lifespan
 # ---------------------------------------------------------------------------
@@ -247,11 +250,15 @@ async def lifespan(app: FastAPI):
     sweep_audio_dir()
 
     daemon = asyncio.create_task(reminder_daemon())
+    telegram_daemon = GideonTelegramDaemon()
+    await telegram_daemon.start()
+
     log.info("G.I.D.E.O.N online")
 
     try:
         yield
     finally:
+        await telegram_daemon.stop()
         daemon.cancel()
         try:
             await daemon

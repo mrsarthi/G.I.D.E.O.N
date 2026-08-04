@@ -15,6 +15,23 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent
 
 
+def _load_env_file() -> None:
+    env_file = BASE_DIR / ".env"
+    if env_file.is_file():
+        for line in env_file.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, val = line.split("=", 1)
+            key = key.strip()
+            val = val.strip().strip("'\"")
+            if key and key not in os.environ:
+                os.environ[key] = val
+
+
+_load_env_file()
+
+
 def _env(key: str, default: str) -> str:
     return os.environ.get(key, default)
 
@@ -36,7 +53,10 @@ EMBEDDING_MODEL = _env("GIDEON_EMBED_MODEL", "nomic-embed-text")
 # budget below is what we are allowed to fill with conversation, leaving room
 # for the tool schemas Ollama prepends and for the response itself.
 NUM_CTX = _env_int("GIDEON_NUM_CTX", 8192)
-TOOL_SCHEMA_RESERVE = _env_int("GIDEON_TOOL_RESERVE", 1400)
+# Sized for the current 18 tools (~2,090 tokens). orchestrator measures the
+# real cost at import and warns if this drifts, so adding tools cannot quietly
+# push the assembled prompt past num_ctx.
+TOOL_SCHEMA_RESERVE = _env_int("GIDEON_TOOL_RESERVE", 2100)
 RESPONSE_RESERVE = _env_int("GIDEON_RESPONSE_RESERVE", 1024)
 MEMORY_RESERVE = _env_int("GIDEON_MEMORY_RESERVE", 700)
 CHARS_PER_TOKEN = 4
@@ -116,6 +136,19 @@ MIN_TTS_SENTENCE_CHARS = _env_int("GIDEON_MIN_TTS_CHARS", 12)
 #  Background daemons
 # ---------------------------------------------------------------------------
 REMINDER_POLL_SECONDS = _env_int("GIDEON_REMINDER_POLL", 30)
+
+# ---------------------------------------------------------------------------
+#  Telegram & External APIs
+# ---------------------------------------------------------------------------
+TELEGRAM_BOT_TOKEN = _env("GIDEON_TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_ALLOWED_USERS = {
+    int(u.strip())
+    for u in _env("GIDEON_TELEGRAM_ALLOWED_USERS", "").split(",")
+    if u.strip().isdigit()
+}
+TELEGRAM_SEND_VOICE = _env("GIDEON_TELEGRAM_SEND_VOICE", "0") == "1"
+
+WOLFRAM_ALPHA_APP_ID = _env("GIDEON_WOLFRAM_APP_ID", "")
 
 # ---------------------------------------------------------------------------
 #  Safety

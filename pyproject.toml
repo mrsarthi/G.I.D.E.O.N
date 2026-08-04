@@ -19,7 +19,9 @@ dependencies = [
     "pydantic>=2.9",
     "pypdf>=6.14.2",
     "pyperclip>=1.11.0",
+    "python-telegram-bot>=21.0",
     "uvicorn>=0.32",
+    "yfinance>=0.2.40",
     "ytmusicapi>=1.12.1",
 ]
 

@@ -34,8 +34,11 @@ from config import (
     HISTORY_MESSAGE_LIMIT,
     MAX_TOOL_TURNS,
     MEMORY_RESERVE,
+    NUM_CTX,
     OLLAMA_OPTIONS,
     PROMPT_TOKEN_BUDGET,
+    RESPONSE_RESERVE,
+    TOOL_SCHEMA_RESERVE,
     REQUIRE_CONFIRMATION,
     TOOL_GATING,
     get_logger,
@@ -56,6 +59,35 @@ _LEGACY_TOOL_PREFIXES = ("[Tool Call:", "[Tool Result]")
 PSEUDO_CALL_CHAR_LIMIT = 400
 
 _memory_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="chroma_writer")
+
+
+def _measure_tool_schema_tokens() -> int:
+    """Cost of the tool schemas Ollama prepends to every tool-enabled prompt.
+
+    Measured rather than guessed: config.TOOL_SCHEMA_RESERVE was set for 11
+    tools (~1,220 tokens). At 18 tools the schemas cost ~2,090, and the stale
+    constant let the assembled prompt exceed num_ctx — at which point Ollama
+    truncates from the front and silently discards the system prompt.
+    """
+    return len(json.dumps(OLLAMA_TOOLS)) // CHARS_PER_TOKEN
+
+
+TOOL_SCHEMA_TOKENS = _measure_tool_schema_tokens()
+
+# Budget derived from the real schema size, so adding a tool cannot overflow
+# the context window without the budget shrinking to match.
+EFFECTIVE_PROMPT_BUDGET = max(
+    1024, NUM_CTX - TOOL_SCHEMA_TOKENS - RESPONSE_RESERVE - MEMORY_RESERVE
+)
+
+if TOOL_SCHEMA_TOKENS > TOOL_SCHEMA_RESERVE:
+    log.warning(
+        "Tool schemas cost %d tokens but TOOL_SCHEMA_RESERVE is %d; "
+        "using measured value (history budget %d tokens).",
+        TOOL_SCHEMA_TOKENS,
+        TOOL_SCHEMA_RESERVE,
+        EFFECTIVE_PROMPT_BUDGET,
+    )
 
 
 def addMemoryAsync(collection, messageId, content, sessionId, role, timestamp):
@@ -207,7 +239,7 @@ def build_context_window(db: DatabaseManager, session_id: str) -> list[dict[str,
     """Assemble recent conversation, newest-first, within the token budget."""
     rows = db.get_sliding_window(session_id, limit=HISTORY_MESSAGE_LIMIT)
 
-    budget = PROMPT_TOKEN_BUDGET - estimateTokens(STATIC_SYSTEM_PROMPT)
+    budget = EFFECTIVE_PROMPT_BUDGET - estimateTokens(STATIC_SYSTEM_PROMPT)
     context_messages: list[dict[str, Any]] = []
     token_count = 0
 
@@ -299,9 +331,12 @@ _TOOL_INTENT_WORDS = {
     "cpu", "gpu", "ram", "vram", "disk", "drive", "battery", "temperature",
     "temp", "hardware", "diagnostics", "diagnostic", "status", "telemetry",
     "system", "performance", "usage", "specs",
-    # search
+    # search & info
     "search", "google", "look", "lookup", "browse", "internet", "web",
-    "online", "news", "weather", "latest", "current",
+    "online", "news", "weather", "forecast", "latest", "current", "stock",
+    "stocks", "crypto", "market", "shares", "ticker", "finance", "financial",
+    "hackernews", "hn", "ip", "geolocation", "isp", "wolfram", "calculate",
+    "convert", "equation",
     # clipboard
     "clipboard", "copy", "paste", "copied",
     # audio / media
@@ -314,7 +349,27 @@ _TOOL_INTENT_WORDS = {
     # files
     "file", "files", "folder", "directory", "find", "locate", "read",
     "document", "pdf", "open up",
+    # weather (Open-Meteo)
+    "forecast", "rain", "raining", "snow", "sunny", "cloudy", "humidity",
+    "hot", "cold", "windy", "degrees", "celsius", "fahrenheit", "climate",
+    # markets (yfinance)
+    "stock", "stocks", "share", "shares", "ticker", "quote", "market",
+    "markets", "nasdaq", "dow", "crypto", "bitcoin", "btc", "eth",
+    "ethereum", "price", "trading", "portfolio", "earnings", "dividend",
+    # news / HackerNews
+    "headlines", "hackernews", "hn", "story", "stories", "article",
+    # geolocation (IP-API)
+    "ip", "location", "where", "geolocation", "isp", "timezone",
+    # computation / Wolfram Alpha
+    "calculate", "compute", "convert", "solve", "equation", "distance",
+    "population", "wolfram",
 }
+
+# Arithmetic asked in words or symbols: "45 times 892", "12 * 7", "30% of 90".
+_ARITHMETIC = re.compile(
+    r"\d+\s*(?:[+\-*/×÷^%]|times|plus|minus|divided by|multiplied by|squared)\s*\d*",
+    re.IGNORECASE,
+)
 
 # Multi-word phrases that imply action without a single keyword.
 _TOOL_INTENT_PHRASES = (
@@ -323,6 +378,13 @@ _TOOL_INTENT_PHRASES = (
     "bring up", "shut down",
     # Music requests that name no keyword: "put on some tame impala".
     "put on", "throw on", "listen to",
+    # Factual/measurement questions routed to Wolfram Alpha. Kept as phrases
+    # because the bare words ("how", "where") are ordinary conversation.
+    "how far", "how many", "how much", "how tall", "how old", "how deep",
+    "how fast", "how big", "how long is", "how heavy",
+    "what is the distance", "where am i", "where is",
+    # Market/weather phrasings with no distinctive keyword.
+    "doing today", "going to rain", "going to snow",
 )
 
 
@@ -342,7 +404,9 @@ def should_offer_tools(user_prompt: str) -> bool:
     words = set(re.findall(r"[a-z']+", text))
     if words & _TOOL_INTENT_WORDS:
         return True
-    return any(phrase in text for phrase in _TOOL_INTENT_PHRASES)
+    if any(phrase in text for phrase in _TOOL_INTENT_PHRASES):
+        return True
+    return bool(_ARITHMETIC.search(text))
 
 
 # ---------------------------------------------------------------------------
@@ -575,6 +639,13 @@ def run_agent_stream(
 
     log.warning("Tool loop exhausted %d turns without a final answer", MAX_TOOL_TURNS)
     yield "I wasn't able to finish that one, boss — the tool chain ran too long."
+
+
+def run_chat_loop(
+    db: DatabaseManager, collection: Any, session_id: str, user_prompt: str
+) -> str:
+    """Synchronously run the agent loop for a turn and return the full text response."""
+    return "".join(run_agent_stream(db, collection, session_id, user_prompt))
 
 
 def run():
