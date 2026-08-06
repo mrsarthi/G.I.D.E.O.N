@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import random
 import re
 import secrets
 import time
@@ -25,6 +26,7 @@ import wave
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from datetime import datetime
+from pathlib import Path
 from typing import Iterator, Optional
 
 import psutil
@@ -47,14 +49,20 @@ from config import (
     FRONTEND_DIR,
     MIN_TTS_SENTENCE_CHARS,
     PIPER_MODEL_DIR,
+    KOKORO_MODEL_PATH,
+    KOKORO_VOICES_PATH,
+    KOKORO_VOICE_NAME,
+    TTS_ENGINE,
     REMINDER_POLL_SECONDS,
     STATIC_DIR,
     TTS_VOICE_FALLBACK,
     get_logger,
     setup_logging,
 )
+import telegram_bot
 from db import close_db, get_db
 from events import bus
+from telegram_bot import get_daemon
 
 setup_logging()
 log = get_logger("gideon.server")
@@ -62,6 +70,7 @@ log = get_logger("gideon.server")
 _tts_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="tts_worker")
 
 piper_voice = None
+kokoro_voice = None
 chroma_collection = None
 
 # Sentence boundary: terminator followed by whitespace.
@@ -72,6 +81,31 @@ _MARKUP = re.compile(r"[*_`#]+")
 # ---------------------------------------------------------------------------
 #  Text-to-speech
 # ---------------------------------------------------------------------------
+def init_kokoro_voice():
+    """Load the local Kokoro-82M ONNX voice into CPU RAM (0 MB VRAM)."""
+    global kokoro_voice
+    try:
+        from kokoro_onnx import Kokoro
+    except ImportError:
+        log.warning("kokoro-onnx is not installed; skipping Kokoro TTS")
+        return
+
+    if not KOKORO_MODEL_PATH.exists() or not KOKORO_VOICES_PATH.exists():
+        log.warning(
+            "Kokoro assets missing (%s / %s); run scratch/download_kokoro_models.py",
+            KOKORO_MODEL_PATH.name,
+            KOKORO_VOICES_PATH.name,
+        )
+        return
+
+    try:
+        log.info("Loading Kokoro-82M ONNX model %s", KOKORO_MODEL_PATH.name)
+        kokoro_voice = Kokoro(str(KOKORO_MODEL_PATH), str(KOKORO_VOICES_PATH))
+        log.info("Kokoro-82M TTS ready (CPU, 0 MB VRAM, voice: %s)", KOKORO_VOICE_NAME)
+    except Exception as exc:
+        log.error("Kokoro TTS initialisation failed: %s", exc)
+
+
 def init_piper_voice():
     """Load the local Piper ONNX voice into RAM (no VRAM cost)."""
     global piper_voice
@@ -131,6 +165,24 @@ def generate_tts_audio(text: str, session_id: str) -> str:
         return ""
 
     AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+
+    if kokoro_voice is not None and TTS_ENGINE == "kokoro":
+        try:
+            import soundfile as sf
+
+            filename = f"{session_id}_{uuid.uuid4().hex[:8]}.wav"
+            filepath = AUDIO_DIR / filename
+            lang = "en-gb" if KOKORO_VOICE_NAME.startswith(("bm_", "bf_")) else "en-us"
+            samples, sample_rate = kokoro_voice.create(
+                clean_text,
+                voice=KOKORO_VOICE_NAME,
+                speed=1.0,
+                lang=lang,
+            )
+            sf.write(str(filepath), samples, sample_rate)
+            return f"/static/audio/{filename}"
+        except Exception as exc:
+            log.error("Kokoro synthesis failed: %s", exc)
 
     if piper_voice is not None:
         try:
@@ -205,9 +257,11 @@ def split_ready_sentences(buffer: str) -> tuple[list[str], str]:
 #  Background daemons
 # ---------------------------------------------------------------------------
 async def reminder_daemon():
-    """Fire due reminders onto the event bus.
+    """Fire due reminders to every channel that can receive them.
 
-    This is what makes set_reminder more than a write-only database call.
+    Delivery is deliberately unconditional on origin: a reminder set at the
+    desktop still needs to reach the phone when no browser is open, and one
+    set on Telegram should also surface in the HUD if it happens to be up.
     """
     db = get_db()
     log.info("Reminder daemon started (%ds poll)", REMINDER_POLL_SECONDS)
@@ -215,32 +269,53 @@ async def reminder_daemon():
         try:
             await asyncio.sleep(REMINDER_POLL_SECONDS)
             due = await asyncio.to_thread(db.get_due_reminders)
-            for reminder_id, text, remind_at in due:
+            for row in due:
+                reminder_id = row["reminder_id"]
+                text = row["text"]
                 await asyncio.to_thread(db.mark_reminder_completed, reminder_id)
-                import random
 
                 honorific = random.choice(["boss", "sir"])
                 spoken = f"Reminder {honorific}: {text}"
                 audio_url = await asyncio.to_thread(generate_tts_audio, spoken, "reminder")
+
+                # 1. Browser HUD.
                 bus.publish(
                     "reminder",
                     {
                         "reminder_id": reminder_id,
                         "text": text,
-                        "scheduled_for": remind_at,
+                        "scheduled_for": row["remind_at"],
                         "message": spoken,
                         "audio_url": audio_url,
+                        "origin": row.get("channel", "web"),
                     },
                 )
-                log.info("Fired reminder #%s", reminder_id)
+
+                # 2. Telegram, so it reaches you away from the desk. Prefers
+                #    the originating chat, else every authorised user.
+                delivered = False
+                try:
+                    audio_path = (
+                        str(AUDIO_DIR / Path(audio_url).name) if audio_url else None
+                    )
+                    delivered = await telegram_bot.notify_reminder(
+                        f"⏰ {spoken}", chat_id=row.get("chat_id"), audio_path=audio_path
+                    )
+                except Exception:
+                    log.exception("Telegram reminder delivery failed")
+
+                log.info(
+                    "Fired reminder #%s (origin=%s, telegram=%s)",
+                    reminder_id,
+                    row.get("channel", "web"),
+                    "sent" if delivered else "not sent",
+                )
         except asyncio.CancelledError:
             log.info("Reminder daemon stopped")
             raise
         except Exception:
             log.exception("Reminder daemon iteration failed")
 
-
-from telegram_bot import GideonTelegramDaemon
 
 
 # ---------------------------------------------------------------------------
@@ -253,11 +328,12 @@ async def lifespan(app: FastAPI):
     bus.bind_loop(asyncio.get_running_loop())
     get_db()
     chroma_collection = memory.initMemory()
+    init_kokoro_voice()
     init_piper_voice()
     sweep_audio_dir()
 
     daemon = asyncio.create_task(reminder_daemon())
-    telegram_daemon = GideonTelegramDaemon()
+    telegram_daemon = get_daemon()
     await telegram_daemon.start()
 
     log.info("G.I.D.E.O.N online")

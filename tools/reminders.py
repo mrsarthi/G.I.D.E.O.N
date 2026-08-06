@@ -105,15 +105,21 @@ def set_reminder(text: str, time_str: str) -> str:
         return "I need to know what to remind you about."
 
     try:
+        from orchestrator import get_turn_origin
+
+        channel, chat_id = get_turn_origin()
         remind_dt = parse_natural_time(time_str)
         reminder_id = get_db().add_reminder(
-            text=clean_text, remind_at=remind_dt.isoformat(timespec="seconds")
+            text=clean_text,
+            remind_at=remind_dt.isoformat(timespec="seconds"),
+            channel=channel,
+            chat_id=chat_id,
         )
     except Exception as exc:
         log.error("Failed to save reminder: %s", exc)
         return f"Failed to set that reminder: {exc}"
 
-    log.info("Reminder #%s set for %s", reminder_id, remind_dt)
+    log.info("Reminder #%s set for %s via %s", reminder_id, remind_dt, channel)
     return (
         f"Reminder #{reminder_id} saved for "
         f"{remind_dt.strftime('%A, %B %d at %I:%M %p')}: '{clean_text}'."

@@ -125,6 +125,10 @@ CORS_ORIGINS = [
 # ---------------------------------------------------------------------------
 #  Voice
 # ---------------------------------------------------------------------------
+TTS_ENGINE = _env("GIDEON_TTS_ENGINE", "kokoro")
+KOKORO_MODEL_PATH = PIPER_MODEL_DIR / _env("GIDEON_KOKORO_MODEL", "kokoro-v1.0.onnx")
+KOKORO_VOICES_PATH = PIPER_MODEL_DIR / _env("GIDEON_KOKORO_VOICES", "voices-v1.0.bin")
+KOKORO_VOICE_NAME = _env("GIDEON_KOKORO_VOICE", "bf_emma")
 TTS_VOICE_FALLBACK = _env("GIDEON_TTS_VOICE", "en-GB-SoniaNeural")
 # edge-tts is a cloud service; off by default to keep the local-first promise.
 ALLOW_CLOUD_TTS = _env("GIDEON_ALLOW_CLOUD_TTS", "0") == "1"

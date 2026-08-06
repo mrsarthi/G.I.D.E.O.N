@@ -36,6 +36,20 @@ def test_accepts_fenced_json():
     assert call["arguments"] == {}
 
 
+def test_conversational_prefix_pseudo_tool_call():
+    text = (
+        "boss, here's a JSON for the function call:\n\n"
+        '{"name": "set_reminder", "parameters": {"text": "Check up on rewrite progress", "time_str": "in 5 minutes"}}'
+    )
+    call = parse_pseudo_tool_call(text)
+    assert call is not None
+    assert call["name"] == "set_reminder"
+    assert call["arguments"] == {
+        "text": "Check up on rewrite progress",
+        "time_str": "in 5 minutes",
+    }
+
+
 def test_missing_parameters_defaults_to_empty():
     assert parse_pseudo_tool_call('{"name": "get_system_status"}')["arguments"] == {}
 

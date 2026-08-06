@@ -21,6 +21,7 @@ import json
 import re
 import sys
 from concurrent.futures import ThreadPoolExecutor
+from contextvars import ContextVar
 from datetime import datetime
 from typing import Any, Iterator
 
@@ -45,7 +46,7 @@ from config import (
 )
 from db import DatabaseManager, get_db
 from memory import addMemory, initMemory, queryMemory
-from tools.registry import OLLAMA_TOOLS, dispatch_tool_call, tools_for_channel
+from tools.registry import OLLAMA_TOOLS, VALID_TOOL_NAMES, dispatch_tool_call, tools_for_channel
 
 log = get_logger("gideon.orchestrator")
 
@@ -59,6 +60,26 @@ _LEGACY_TOOL_PREFIXES = ("[Tool Call:", "[Tool Result]")
 PSEUDO_CALL_CHAR_LIMIT = 400
 
 _memory_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="chroma_writer")
+
+# Which channel and session the current turn belongs to. Tools read this
+# instead of having it threaded through every signature — set_reminder needs
+# it so a reminder created on Telegram is delivered back to that chat.
+current_channel: ContextVar[str] = ContextVar("current_channel", default="web")
+current_session: ContextVar[str] = ContextVar("current_session", default="")
+
+
+def get_turn_origin() -> tuple[str, str | None]:
+    """Return (channel, chat_id) for the turn being processed.
+
+    Telegram session ids are "telegram_<chat_id>", so the chat id is
+    recoverable without extra plumbing.
+    """
+    channel = current_channel.get()
+    session = current_session.get()
+    chat_id = None
+    if channel == "telegram" and session.startswith("telegram_"):
+        chat_id = session.removeprefix("telegram_")
+    return channel, chat_id
 
 
 def _measure_tool_schema_tokens() -> int:
@@ -143,37 +164,80 @@ def extract_tool_calls(response: Any) -> list[dict[str, Any]]:
 
 
 def parse_pseudo_tool_call(text: str) -> dict[str, Any] | None:
-    """Recognise a tool call that the model emitted as plain text.
+    """Recognise a tool call that the model emitted as plain text anywhere in its output.
 
-    Small models regularly ignore the native tool-call channel and just print
-    `{"name": "...", "parameters": {...}}` into their answer. Ollama hands
-    that to us as content, so without this it gets streamed to the UI and
-    read aloud by the TTS — the exact failure RULE 4 tries to prevent.
+    Small models regularly ignore the native tool-call channel and print
+    `{"name": "...", "parameters": {...}}` or introductory prose followed by JSON.
+    Ollama hands that to us as content, so without this it gets streamed to the UI
+    and read aloud by TTS or sent over Telegram — the exact failure RULE 4 tries to prevent.
 
-    Returns None when the text is not (yet) a complete JSON object.
+    Returns None when the text does not contain a valid JSON tool call object.
     """
+    if not text or not text.strip():
+        return None
+
+    def _extract_from_obj(obj: Any) -> dict[str, Any] | None:
+        if not isinstance(obj, dict):
+            return None
+        name = obj.get("name") or obj.get("function") or obj.get("tool")
+        if isinstance(name, dict):
+            name = name.get("name")
+        if not isinstance(name, str) or not name.strip():
+            return None
+        args = obj.get("parameters") or obj.get("arguments") or obj.get("args") or {}
+        return {"name": name.strip(), "arguments": args if isinstance(args, dict) else {}}
+
     candidate = text.strip()
+
+    # 1. Direct JSON or fenced code block
     if candidate.startswith("```"):
         candidate = candidate.strip("`").strip()
         if candidate[:4].lower() == "json":
             candidate = candidate[4:].strip()
-    if not candidate.startswith("{"):
-        return None
 
-    try:
-        obj = json.loads(candidate)
-    except json.JSONDecodeError:
-        return None  # Possibly incomplete; caller keeps buffering.
+    if candidate.startswith("{"):
+        try:
+            obj = json.loads(candidate)
+            extracted = _extract_from_obj(obj)
+            if extracted:
+                return extracted
+        except (json.JSONDecodeError, TypeError):
+            pass
 
-    if not isinstance(obj, dict):
-        return None
+    # 2. Embedded markdown JSON block in text
+    for code_match in re.finditer(r"```(?:json)?\s*(\{[\s\S]*?\})\s*```", text, re.IGNORECASE):
+        try:
+            obj = json.loads(code_match.group(1))
+            extracted = _extract_from_obj(obj)
+            if extracted:
+                return extracted
+        except (json.JSONDecodeError, TypeError):
+            pass
 
-    name = obj.get("name") or obj.get("function") or obj.get("tool")
-    if not isinstance(name, str) or not name:
-        return None
+    # 3. Embedded JSON object in conversational prose (e.g., "boss, here's a JSON for the function call:\n\n{...}")
+    for json_match in re.finditer(r"(\{\s*\"(?:name|function|tool)\"[\s\S]*?\})", text):
+        try:
+            obj = json.loads(json_match.group(1))
+            extracted = _extract_from_obj(obj)
+            if extracted:
+                return extracted
+        except (json.JSONDecodeError, TypeError):
+            pass
 
-    args = obj.get("parameters") or obj.get("arguments") or {}
-    return {"name": name, "arguments": args if isinstance(args, dict) else {}}
+    # 4. Fallback: try parsing from the first '{' to last '}'
+    first_brace = text.find("{")
+    last_brace = text.rfind("}")
+    if first_brace != -1 and last_brace > first_brace:
+        snippet = text[first_brace : last_brace + 1]
+        try:
+            obj = json.loads(snippet)
+            extracted = _extract_from_obj(obj)
+            if extracted:
+                return extracted
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    return None
 
 
 def extract_chunk_content(chunk: Any) -> str:
@@ -201,7 +265,7 @@ STATIC_SYSTEM_PROMPT = """You are G.I.D.E.O.N (Guided Intelligence Does Everythi
 - RULE 1 (GENERAL CHAT, EXPLANATIONS & FOLLOW-UPS): When the user asks general technical/conceptual questions, requests summaries, or says things like "in brief please", "summarize that", or "hi", DO NOT invoke any tools. Respond directly using your intelligence and conversation history.
 - RULE 2 (EXPLICIT USER COMMANDS ONLY): Only invoke a tool when the user gives a clear operational command (e.g., checking PC hardware diagnostics, reminders, opening an app, checking/copying to the Windows clipboard, searching the web, adjusting PC audio volume, controlling media, searching or playing tracks on YouTube Music, or reading a local document/PDF).
 - RULE 3 (INVISIBLE WEB SEARCHING): When the user instructs you to search the internet or check online info, ALWAYS use search_web. NEVER attempt to open a browser window for the user. Read the background text results and explain the findings directly in natural speech.
-- RULE 4 (NEVER LEAK TOOL JSON IN SPEECH): Never say things like "I would recommend a function call to" and never output raw JSON tool schemas in your spoken responses. Always reply directly in natural human language.
+- RULE 4 (NEVER LEAK TOOL JSON IN SPEECH): Never say things like "I would recommend a function call to" or "here's a JSON for the function call", and NEVER output raw JSON tool schemas or objects in your spoken responses. Always reply directly in natural human language.
 - RULE 5 (DATE/TIME AWARENESS): The current local date and time is supplied to you in the live context block. Never invoke a tool to check the time or date.
 - RULE 6 (PLAYING MUSIC BY NAME): When the user asks to play a specific song, track, album, or artist by name (e.g., "play Loser by Tame Impala"), ALWAYS use play_youtube_music. NEVER use control_media for named music queries.
 - RULE 7 (ADDRESSING STYLE & FORBIDDEN ENDINGS): Randomly alternate addressing the user as "boss" or "sir" across turns. Address the user AT MOST ONCE per response, strictly near the beginning (e.g., "Yes boss", "Right away sir", "Certainly boss"). NEVER put a comma immediately after "boss" or "sir" (e.g., write "Yes boss" instead of "Yes, boss," so TTS speech flows naturally without a pause). NEVER put "boss" or "sir" at the end of a sentence or at the end of your response.
@@ -534,6 +598,9 @@ def run_agent_stream(
     context_messages = build_context_window(db, session_id)
     messages = format_messages_for_ollama(db, collection, context_messages, user_prompt)
 
+    current_channel.set(channel)
+    current_session.set(session_id)
+
     offer_tools = should_offer_tools(user_prompt)
     # Schemas are filtered per channel: a remote channel never even sees the
     # tools it is not allowed to run.
@@ -553,8 +620,7 @@ def run_agent_stream(
 
             full_ans = ""
             collected_tool_calls: list[dict[str, Any]] = []
-            held = ""          # Buffered opening tokens that may be JSON.
-            resolved = False   # True once we know this turn is real speech.
+            held = ""          # Buffered text from the first brace onwards.
             suppress = False   # True after intercepting a text tool call.
 
             for chunk in stream:
@@ -570,32 +636,44 @@ def run_agent_stream(
                 if not full_ans and not held and token.strip().lower() == "assistant":
                     continue
 
-                # Withhold a reply that opens like JSON until we know whether
-                # it is speech or a tool call the model typed out by hand.
-                if not resolved and not full_ans:
-                    if (held + token).lstrip().startswith(("{", "```")):
-                        held += token
-                        pseudo = parse_pseudo_tool_call(held)
-                        if pseudo:
-                            log.info("Intercepted text-emitted tool call: %s", pseudo["name"])
-                            collected_tool_calls.append(pseudo)
-                            held, suppress, resolved = "", True, True
-                            continue
-                        if len(held) < PSEUDO_CALL_CHAR_LIMIT:
-                            continue
-                        # Too long to be a tool call — release it as speech.
-                        token, held = held, ""
-                    elif held:
-                        token, held = held + token, ""
-                    resolved = True
+                # Prose streams straight through; only text from a '{' or a
+                # code fence onwards is withheld, and only until it can be
+                # classified. Buffering every reply would delay the first
+                # token by the whole buffer and defeat sentence-level TTS.
+                if held:
+                    held += token
+                else:
+                    split_at = _json_start_index(token)
+                    if split_at is None:
+                        full_ans += token
+                        yield token
+                        continue
+                    prefix, held = token[:split_at], token[split_at:]
+                    if prefix:
+                        full_ans += prefix
+                        yield prefix
 
-                full_ans += token
-                yield token
+                pseudo = parse_pseudo_tool_call(held)
+                if pseudo and _is_tool_call_candidate(pseudo, had_prose=bool(full_ans)):
+                    log.info("Intercepted text-emitted tool call: %s", pseudo["name"])
+                    collected_tool_calls.append(pseudo)
+                    held, suppress = "", True
+                elif len(held) >= PSEUDO_CALL_CHAR_LIMIT:
+                    # Too long to be a tool call — release it as speech.
+                    full_ans += held
+                    yield held
+                    held = ""
 
-            # Stream ended mid-buffer: emit whatever was withheld.
+            # Anything still withheld when the stream ends.
             if held and not suppress:
-                full_ans += held
-                yield held
+                pseudo = parse_pseudo_tool_call(held)
+                if pseudo and _is_tool_call_candidate(pseudo, had_prose=bool(full_ans)):
+                    log.info("Intercepted end-of-stream tool call: %s", pseudo["name"])
+                    collected_tool_calls.append(pseudo)
+                    suppress = True
+                else:
+                    full_ans += held
+                    yield held
 
         except Exception as exc:
             log.exception("Ollama stream failed on turn %d", turn)

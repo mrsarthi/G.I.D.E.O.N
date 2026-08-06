@@ -9,6 +9,7 @@ Includes strict user ID authorization and shared dual-tier SQLite + ChromaDB mem
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from typing import Any
 
 from config import (
@@ -177,6 +178,52 @@ class GideonTelegramDaemon:
         except Exception as err:
             log.error("Failed to start Telegram Bot daemon: %s", err, exc_info=True)
 
+    async def send_message(self, chat_id: int | str, text: str) -> bool:
+        """Push an unprompted message into a chat. Returns True on success."""
+        if not self.app or not self.app.bot:
+            log.debug("Telegram not running; dropping outbound message")
+            return False
+        try:
+            for chunk_idx in range(0, len(text), 4000):
+                await self.app.bot.send_message(
+                    chat_id=chat_id, text=text[chunk_idx : chunk_idx + 4000]
+                )
+            return True
+        except Exception as err:
+            log.error("Failed to send Telegram message to %s: %s", chat_id, err)
+            return False
+
+    async def send_voice_note(self, chat_id: int | str, audio_path: str) -> bool:
+        """Best-effort voice note. Telegram wants OGG/OPUS for sendVoice, and
+        Piper produces WAV, so fall back to sendAudio then give up quietly."""
+        if not self.app or not self.app.bot or not audio_path:
+            return False
+        path = Path(audio_path)
+        if not path.is_file():
+            return False
+        for sender in ("send_voice", "send_audio"):
+            try:
+                with path.open("rb") as handle:
+                    await getattr(self.app.bot, sender)(chat_id=chat_id, **{
+                        "voice" if sender == "send_voice" else "audio": handle
+                    })
+                return True
+            except Exception as err:
+                log.debug("Telegram %s failed: %s", sender, err)
+        log.info("Could not deliver voice note; text was still sent")
+        return False
+
+    async def broadcast(self, text: str, audio_path: str | None = None) -> int:
+        """Send to every authorised user. Used when a reminder has no origin
+        chat — one set from the desktop still needs to reach the phone."""
+        sent = 0
+        for user_id in self.allowed_users:
+            if await self.send_message(user_id, text):
+                sent += 1
+                if TELEGRAM_SEND_VOICE and audio_path:
+                    await self.send_voice_note(user_id, audio_path)
+        return sent
+
     async def stop(self) -> None:
         if self.app:
             try:
@@ -189,3 +236,38 @@ class GideonTelegramDaemon:
                 log.info("Telegram Bot daemon stopped.")
             except Exception as err:
                 log.error("Error shutting down Telegram Bot daemon: %s", err)
+
+
+# ---------------------------------------------------------------------------
+#  Process-wide instance
+# ---------------------------------------------------------------------------
+# The reminder daemon in server.py needs to reach the running bot to deliver
+# notifications, so the instance is shared rather than local to lifespan.
+_daemon: GideonTelegramDaemon | None = None
+
+
+def get_daemon() -> GideonTelegramDaemon:
+    global _daemon
+    if _daemon is None:
+        _daemon = GideonTelegramDaemon()
+    return _daemon
+
+
+async def notify_reminder(text: str, chat_id: str | None = None, audio_path: str | None = None) -> bool:
+    """Deliver a fired reminder to Telegram.
+
+    Prefers the chat the reminder was created in; otherwise reaches every
+    authorised user, so a reminder set on the desktop still arrives on the
+    phone when no browser is open.
+    """
+    daemon = get_daemon()
+    if not daemon.app:
+        return False
+
+    if chat_id:
+        ok = await daemon.send_message(chat_id, text)
+        if ok and TELEGRAM_SEND_VOICE and audio_path:
+            await daemon.send_voice_note(chat_id, audio_path)
+        return ok
+
+    return await daemon.broadcast(text, audio_path) > 0

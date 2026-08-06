@@ -89,6 +89,11 @@ class DatabaseManager:
                     text TEXT NOT NULL,
                     remind_at TEXT NOT NULL,
                     status TEXT DEFAULT 'pending',
+                    -- Where the reminder was created. chat_id lets the daemon
+                    -- reply into the same Telegram conversation rather than
+                    -- broadcasting to every allowed user.
+                    channel TEXT DEFAULT 'web',
+                    chat_id TEXT,
                     created_at TEXT DEFAULT CURRENT_TIMESTAMP
                 )
             """)
@@ -146,6 +151,16 @@ class DatabaseManager:
             )
             if cursor.rowcount:
                 log.info("Migrated %d legacy tool-call rows", cursor.rowcount)
+
+            # Reminders predating channel-aware delivery have no origin.
+            existing = {r[1] for r in cursor.execute("PRAGMA table_info(reminders)")}
+            for column, ddl in (
+                ("channel", "ALTER TABLE reminders ADD COLUMN channel TEXT DEFAULT 'web'"),
+                ("chat_id", "ALTER TABLE reminders ADD COLUMN chat_id TEXT"),
+            ):
+                if column not in existing:
+                    cursor.execute(ddl)
+                    log.info("Added reminders.%s column", column)
 
     # ------------------------------------------------------------------
     #  Sessions & messages
@@ -257,26 +272,35 @@ class DatabaseManager:
     # ------------------------------------------------------------------
     #  Reminders
     # ------------------------------------------------------------------
-    def add_reminder(self, text: str, remind_at: str) -> int:
+    def add_reminder(
+        self,
+        text: str,
+        remind_at: str,
+        channel: str = "web",
+        chat_id: str | None = None,
+    ) -> int:
         with self._lock, self.conn:
             cursor = self.conn.cursor()
             cursor.execute(
-                "INSERT INTO reminders (text, remind_at) VALUES (?, ?)",
-                (text, remind_at),
+                "INSERT INTO reminders (text, remind_at, channel, chat_id) "
+                "VALUES (?, ?, ?, ?)",
+                (text, remind_at, channel, chat_id),
             )
             return cursor.lastrowid
 
-    def get_due_reminders(self, current_iso: str | None = None) -> list[tuple[int, str, str]]:
+    def get_due_reminders(self, current_iso: str | None = None) -> list[dict]:
         """Pending reminders whose time has arrived. Polled by the daemon."""
         if current_iso is None:
             current_iso = datetime.now().isoformat(timespec="seconds")
         with self._lock:
-            return self.conn.execute(
-                """SELECT reminder_id, text, remind_at FROM reminders
+            rows = self.conn.execute(
+                """SELECT reminder_id, text, remind_at, channel, chat_id FROM reminders
                    WHERE status = 'pending' AND remind_at <= ?
                    ORDER BY remind_at ASC""",
                 (current_iso,),
             ).fetchall()
+        keys = ("reminder_id", "text", "remind_at", "channel", "chat_id")
+        return [dict(zip(keys, r)) for r in rows]
 
     def get_pending_reminders(self, limit: int = 10) -> list[tuple[int, str, str]]:
         with self._lock:
