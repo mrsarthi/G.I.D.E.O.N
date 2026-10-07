@@ -1,0 +1,496 @@
+"""
+G.I.D.E.O.N Relational Store (SQLite)
+
+The connection is shared across the FastAPI worker threads, the ChromaDB
+writer thread and the reminder daemon, so every statement goes through one
+re-entrant lock. sqlite3 with check_same_thread=False is not thread-safe on
+its own; concurrent writes without the lock surface as
+"database table is locked" under load.
+
+Use get_db() rather than constructing DatabaseManager per call site — each
+instance opens another connection to the same WAL file.
+"""
+
+from __future__ import annotations
+
+import sqlite3
+import threading
+import uuid
+from datetime import datetime
+from pathlib import Path
+
+from gideon.core.config import DB_PATH
+from gideon.core.logs import get_logger
+from gideon.storage.models import ChatMessage, Reminder
+
+log = get_logger("gideon.db")
+
+_SCHEMA_ROLES = ("user", "assistant", "tool", "tool_call", "system")
+
+
+def _inserted_id(cursor: sqlite3.Cursor) -> int:
+    """Row id of the INSERT just executed (never None after a successful one)."""
+    assert cursor.lastrowid is not None
+    return cursor.lastrowid
+
+
+_REMINDER_COLUMNS = "reminder_id, text, remind_at, channel, chat_id, remote_synced"
+
+
+def _reminder(row: tuple) -> Reminder:
+    """Build a Reminder from a row selected as _REMINDER_COLUMNS."""
+    reminder_id, text, remind_at, channel, chat_id, remote_synced = row
+    return Reminder(
+        reminder_id=reminder_id,
+        text=text,
+        remind_at=remind_at,
+        # Rows predating channel-aware delivery may hold NULL here.
+        channel=channel or "web",
+        chat_id=chat_id,
+        remote_synced=bool(remote_synced),
+    )
+
+
+class DatabaseManager:
+    def __init__(self, db_path=None):
+        self.db_path = str(db_path or DB_PATH)
+        Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
+        self._lock = threading.RLock()
+        self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
+
+        self.conn.execute("PRAGMA journal_mode=WAL")
+        self.conn.execute("PRAGMA synchronous=NORMAL")
+        self.conn.execute("PRAGMA foreign_keys=ON")
+        # Wait rather than fail immediately when another thread holds a write.
+        self.conn.execute("PRAGMA busy_timeout=5000")
+
+        self._init_schema()
+        self._migrate()
+
+    # ------------------------------------------------------------------
+    #  Schema
+    # ------------------------------------------------------------------
+    def _init_schema(self):
+        with self._lock, self.conn:
+            cursor = self.conn.cursor()
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS session (
+                    session_id TEXT PRIMARY KEY,
+                    session_name TEXT NOT NULL,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS messages (
+                    message_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT,
+                    role TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
+                    tool_name TEXT DEFAULT 'none',
+                    tool_args TEXT,
+                    quality_flag INTEGER DEFAULT 0,
+                    FOREIGN KEY (session_id) REFERENCES session(session_id) ON DELETE CASCADE
+                )
+            """)
+
+            # Covers the sliding-window query (session filter + id ordering).
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_messages_session_id
+                ON messages(session_id, message_id DESC)
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_profile (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS reminders (
+                    reminder_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    text TEXT NOT NULL,
+                    remind_at TEXT NOT NULL,
+                    status TEXT DEFAULT 'pending',
+                    -- Where the reminder was created. chat_id lets the daemon
+                    -- reply into the same Telegram conversation rather than
+                    -- broadcasting to every allowed user.
+                    channel TEXT DEFAULT 'web',
+                    chat_id TEXT,
+                    -- 1 once the always-on scheduler has accepted this row.
+                    -- Delivery ownership follows this flag: synced rows are
+                    -- pushed to Telegram by the remote node (which fires even
+                    -- when this machine is off), unsynced rows stay this
+                    -- process's responsibility. Exactly one side sends, so
+                    -- there is nothing to de-duplicate.
+                    remote_synced INTEGER DEFAULT 0,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_reminders_status_time
+                ON reminders(status, remind_at)
+            """)
+
+            # Durable record of every shell command attempted, including the
+            # ones that were refused. Log files and the event bus are both
+            # ephemeral; for a feature that runs arbitrary code you want to be
+            # able to answer "what did it run, when, from where" afterwards.
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS command_audit (
+                    audit_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    command TEXT NOT NULL,
+                    cwd TEXT,
+                    channel TEXT DEFAULT 'unknown',
+                    allowed INTEGER NOT NULL,
+                    block_reason TEXT,
+                    return_code INTEGER,
+                    output_excerpt TEXT,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_command_audit_time
+                ON command_audit(created_at DESC)
+            """)
+
+            defaults = [
+                ("user_name", "boss"),
+                ("addressing_style", "boss or sir"),
+                ("assistant_name", "G.I.D.E.O.N"),
+                ("language_preference", "English"),
+                ("ongoing_projects", "G.I.D.E.O.N AI Assistant Development"),
+            ]
+            for k, v in defaults:
+                cursor.execute(
+                    "INSERT OR IGNORE INTO user_profile (key, value) VALUES (?, ?)",
+                    (k, v),
+                )
+
+    def _migrate(self):
+        """Reclassify tool bookkeeping that older builds stored as assistant speech.
+
+        Left as 'assistant' it gets replayed as conversation, which teaches the
+        model to narrate "[Tool Call: ...]" instead of speaking naturally.
+        """
+        with self._lock, self.conn:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "UPDATE messages SET role = 'tool_call' "
+                "WHERE role = 'assistant' AND content LIKE '[Tool Call:%'"
+            )
+            if cursor.rowcount:
+                log.info("Migrated %d legacy tool-call rows", cursor.rowcount)
+
+            # Reminders predating channel-aware delivery have no origin.
+            existing = {r[1] for r in cursor.execute("PRAGMA table_info(reminders)")}
+            for column, ddl in (
+                ("channel", "ALTER TABLE reminders ADD COLUMN channel TEXT DEFAULT 'web'"),
+                ("chat_id", "ALTER TABLE reminders ADD COLUMN chat_id TEXT"),
+                # Rows predating the remote scheduler default to unsynced, so
+                # this process keeps delivering them until the mirror picks
+                # them up. Defaulting the other way would silently drop them.
+                (
+                    "remote_synced",
+                    "ALTER TABLE reminders ADD COLUMN remote_synced INTEGER DEFAULT 0",
+                ),
+            ):
+                if column not in existing:
+                    cursor.execute(ddl)
+                    log.info("Added reminders.%s column", column)
+
+    # ------------------------------------------------------------------
+    #  Sessions & messages
+    # ------------------------------------------------------------------
+    def create_session(self, session_name="New Conversation") -> str:
+        session_id = str(uuid.uuid4())
+        with self._lock, self.conn:
+            self.conn.execute(
+                "INSERT INTO session (session_id, session_name) VALUES (?, ?)",
+                (session_id, session_name),
+            )
+        return session_id
+
+    def ensure_session(self, session_id: str, session_name: str = "Session") -> str:
+        """Create a session with a caller-supplied id if it does not exist.
+
+        Needed for external channels (Telegram) that derive a stable session id
+        from the chat id. Messages carry a foreign key to session, so inserting
+        one for an unknown session raises IntegrityError.
+        """
+        with self._lock, self.conn:
+            self.conn.execute(
+                "INSERT OR IGNORE INTO session (session_id, session_name) VALUES (?, ?)",
+                (session_id, session_name),
+            )
+        return session_id
+
+    def session_exists(self, session_id: str) -> bool:
+        with self._lock:
+            row = self.conn.execute(
+                "SELECT 1 FROM session WHERE session_id = ?", (session_id,)
+            ).fetchone()
+        return row is not None
+
+    def list_sessions(self) -> list[dict]:
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT session_id, session_name, created_at FROM session "
+                "ORDER BY created_at DESC"
+            ).fetchall()
+        return [
+            {"session_id": r[0], "session_name": r[1], "created_at": r[2]} for r in rows
+        ]
+
+    def insert_message(self, session_id, role, content, tool_name="none", tool_args=None) -> int:
+        with self._lock, self.conn:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                """INSERT INTO messages (session_id, role, content, tool_name, tool_args)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (session_id, role, content, tool_name, tool_args),
+            )
+            return _inserted_id(cursor)
+
+    def get_sliding_window(self, session_id, limit=10) -> list[ChatMessage]:
+        """Fetch the last N messages, returned oldest-first."""
+        with self._lock:
+            rows = self.conn.execute(
+                """SELECT role, content FROM messages
+                   WHERE session_id = ?
+                   ORDER BY message_id DESC
+                   LIMIT ?""",
+                (session_id, limit),
+            ).fetchall()
+        return [ChatMessage(role, content) for role, content in reversed(rows)]
+
+    def get_history(self, session_id: str) -> list[dict]:
+        with self._lock:
+            rows = self.conn.execute(
+                """SELECT role, content, timestamp, tool_name
+                   FROM messages WHERE session_id = ?
+                   ORDER BY message_id ASC""",
+                (session_id,),
+            ).fetchall()
+        return [
+            {"role": r[0], "content": r[1], "timestamp": r[2], "tool_name": r[3]}
+            for r in rows
+        ]
+
+    def flag_good_message(self, message_id):
+        with self._lock, self.conn:
+            self.conn.execute(
+                "UPDATE messages SET quality_flag = 1 WHERE message_id = ?",
+                (message_id,),
+            )
+
+    def delete_session(self, session_id):
+        with self._lock, self.conn:
+            self.conn.execute("DELETE FROM session WHERE session_id = ?", (session_id,))
+
+    # ------------------------------------------------------------------
+    #  User profile
+    # ------------------------------------------------------------------
+    def get_user_profile(self) -> dict[str, str]:
+        with self._lock:
+            rows = self.conn.execute("SELECT key, value FROM user_profile").fetchall()
+        return dict(rows)
+
+    def set_user_profile(self, key: str, value: str):
+        with self._lock, self.conn:
+            self.conn.execute(
+                "INSERT INTO user_profile (key, value, updated_at) "
+                "VALUES (?, ?, CURRENT_TIMESTAMP) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value, "
+                "updated_at=CURRENT_TIMESTAMP",
+                (key, value),
+            )
+
+    # ------------------------------------------------------------------
+    #  Reminders
+    # ------------------------------------------------------------------
+    def add_reminder(
+        self,
+        text: str,
+        remind_at: str,
+        channel: str = "web",
+        chat_id: str | None = None,
+    ) -> int:
+        with self._lock, self.conn:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "INSERT INTO reminders (text, remind_at, channel, chat_id) "
+                "VALUES (?, ?, ?, ?)",
+                (text, remind_at, channel, chat_id),
+            )
+            return _inserted_id(cursor)
+
+    def get_due_reminders(self, current_iso: str | None = None) -> list[Reminder]:
+        """Pending reminders whose time has arrived. Polled by the daemon."""
+        if current_iso is None:
+            current_iso = datetime.now().isoformat(timespec="seconds")
+        with self._lock:
+            rows = self.conn.execute(
+                f"""SELECT {_REMINDER_COLUMNS}
+                   FROM reminders
+                   WHERE status = 'pending' AND remind_at <= ?
+                   ORDER BY remind_at ASC""",
+                (current_iso,),
+            ).fetchall()
+        return [_reminder(r) for r in rows]
+
+    def get_pending_reminders(self, limit: int = 10) -> list[Reminder]:
+        with self._lock:
+            rows = self.conn.execute(
+                f"""SELECT {_REMINDER_COLUMNS}
+                   FROM reminders
+                   WHERE status = 'pending'
+                   ORDER BY remind_at ASC LIMIT ?""",
+                (limit,),
+            ).fetchall()
+        return [_reminder(r) for r in rows]
+
+    def mark_reminder_completed(self, reminder_id: int):
+        with self._lock, self.conn:
+            self.conn.execute(
+                "UPDATE reminders SET status = 'completed' WHERE reminder_id = ?",
+                (reminder_id,),
+            )
+
+    def mark_reminder_missed(self, reminder_id: int):
+        """Retire a reminder that came due while nothing was running.
+
+        Kept distinct from 'completed' so the digest can say what was missed
+        and so the audit trail does not claim it was delivered on time.
+        """
+        with self._lock, self.conn:
+            self.conn.execute(
+                "UPDATE reminders SET status = 'missed' WHERE reminder_id = ?",
+                (reminder_id,),
+            )
+
+    # ------------------------------------------------------------------
+    #  Remote scheduler mirror
+    # ------------------------------------------------------------------
+    def get_unsynced_reminders(self, limit: int = 50) -> list[Reminder]:
+        """Pending future reminders the always-on node has not accepted yet.
+
+        Past-due rows are excluded: mirroring them would ask the node to fire
+        something that is already late, which the local digest handles better.
+        """
+        now_iso = datetime.now().isoformat(timespec="seconds")
+        with self._lock:
+            rows = self.conn.execute(
+                f"""SELECT {_REMINDER_COLUMNS}
+                   FROM reminders
+                   WHERE status = 'pending' AND remote_synced = 0 AND remind_at > ?
+                   ORDER BY remind_at ASC LIMIT ?""",
+                (now_iso, limit),
+            ).fetchall()
+        return [_reminder(r) for r in rows]
+
+    def mark_reminder_synced(self, reminder_id: int, synced: bool = True):
+        with self._lock, self.conn:
+            self.conn.execute(
+                "UPDATE reminders SET remote_synced = ? WHERE reminder_id = ?",
+                (1 if synced else 0, reminder_id),
+            )
+
+    # ------------------------------------------------------------------
+    #  Command audit
+    # ------------------------------------------------------------------
+    def record_command(
+        self,
+        command: str,
+        cwd: str | None,
+        channel: str,
+        allowed: bool,
+        block_reason: str | None = None,
+        return_code: int | None = None,
+        output_excerpt: str | None = None,
+    ) -> int:
+        """Append one shell-command attempt to the audit trail."""
+        with self._lock, self.conn:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                """INSERT INTO command_audit
+                   (command, cwd, channel, allowed, block_reason, return_code, output_excerpt)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    command,
+                    cwd,
+                    channel,
+                    1 if allowed else 0,
+                    block_reason,
+                    return_code,
+                    (output_excerpt or "")[:500] or None,
+                ),
+            )
+            return _inserted_id(cursor)
+
+    def get_command_audit(self, limit: int = 50) -> list[dict]:
+        with self._lock:
+            rows = self.conn.execute(
+                """SELECT audit_id, command, cwd, channel, allowed, block_reason,
+                          return_code, output_excerpt, created_at
+                   FROM command_audit ORDER BY audit_id DESC LIMIT ?""",
+                (limit,),
+            ).fetchall()
+        keys = (
+            "audit_id", "command", "cwd", "channel", "allowed", "block_reason",
+            "return_code", "output_excerpt", "created_at",
+        )
+        return [dict(zip(keys, r, strict=True)) for r in rows]
+
+    # ------------------------------------------------------------------
+    #  Maintenance
+    # ------------------------------------------------------------------
+    def checkpoint(self):
+        """Fold the WAL back into the main database file.
+
+        Without this the -wal file grows unbounded; it had reached 2.6MB
+        against a 104KB database.
+        """
+        try:
+            with self._lock:
+                self.conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        except sqlite3.Error as exc:
+            log.warning("WAL checkpoint failed: %s", exc)
+
+    def ping(self) -> None:
+        with self._lock:
+            self.conn.execute("SELECT 1").fetchone()
+
+    def close(self):
+        self.checkpoint()
+        with self._lock:
+            self.conn.close()
+
+
+# ---------------------------------------------------------------------------
+#  Process-wide singleton
+# ---------------------------------------------------------------------------
+_instance: DatabaseManager | None = None
+_instance_lock = threading.Lock()
+
+
+def get_db() -> DatabaseManager:
+    """Return the shared DatabaseManager, creating it on first use."""
+    global _instance
+    if _instance is None:
+        with _instance_lock:
+            if _instance is None:
+                _instance = DatabaseManager()
+    return _instance
+
+
+def close_db() -> None:
+    global _instance
+    with _instance_lock:
+        if _instance is not None:
+            _instance.close()
+            _instance = None

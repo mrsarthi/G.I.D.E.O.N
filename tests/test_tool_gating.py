@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from orchestrator import should_offer_tools
+from gideon.brain.intent import should_offer_tools
 
 
 @pytest.mark.parametrize(
@@ -77,16 +77,23 @@ def test_keyword_must_be_a_whole_word():
     assert should_offer_tools("what does copyright law say about that") is False
 
 
-def test_gating_can_be_disabled():
+def test_gating_can_be_disabled(monkeypatch):
     """With gating off the behaviour reverts to always offering tools."""
-    import orchestrator
+    from gideon.brain import intent
 
-    original = orchestrator.TOOL_GATING
-    try:
-        orchestrator.TOOL_GATING = False
-        assert should_offer_tools("hi") is True
-    finally:
-        orchestrator.TOOL_GATING = original
+    monkeypatch.setattr(intent, "TOOL_GATING", False)
+    assert should_offer_tools("hi") is True
+
+
+def test_every_tool_contributes_its_trigger_words():
+    """Gating vocabulary comes from the tool declarations, so a new tool that
+    declares no triggers can never be offered and would silently do nothing."""
+    from gideon.brain.intent import TOOL_INTENT_WORDS
+    from gideon.tools.registry import exposed_tools
+
+    for spec in exposed_tools():
+        assert spec.triggers, f"{spec.name} declares no trigger words"
+        assert spec.triggers <= TOOL_INTENT_WORDS
 
 
 # ---------------------------------------------------------------------------

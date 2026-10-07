@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from tools.reminders import parse_natural_time
+from gideon.tools.reminders import parse_natural_time
 
 # A Wednesday, deliberately mid-week and mid-afternoon.
 NOW = datetime(2026, 8, 5, 14, 30, 0)

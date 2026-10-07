@@ -3,16 +3,15 @@ Unit tests for G.I.D.E.O.N Terminal Execution Tool and Endpoint.
 Tests command execution, output capture, registry dispatch, and API endpoints.
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-import pytest
 from fastapi.testclient import TestClient
 
-from server import app
-from tools.registry import dispatch_tool_call
-from tools.terminal import run_terminal_command
-
-from config import API_TOKEN, API_TOKEN_HEADER, PORT
+from gideon.core.config import PORT
+from gideon.core.security import API_TOKEN, API_TOKEN_HEADER
+from gideon.interfaces.api.app import app
+from gideon.tools.registry import dispatch_tool_call, get_tool
+from gideon.tools.terminal import run_terminal_command
 
 # base_url sets the Host header; the server rejects anything non-loopback to
 # defeat DNS rebinding, and TestClient's default "testserver" is not.
@@ -32,9 +31,11 @@ def test_run_terminal_command_empty():
 
 
 def test_run_terminal_command_registry_dispatch():
-    with patch("tools.registry.run_terminal_command", return_value="Registry Terminal OK"):
+    with patch.object(get_tool("run_terminal_command"), "fn", return_value="Registry Terminal OK") as fn:
         res = dispatch_tool_call("run_terminal_command", {"command": "git status"})
-        assert res == "Registry Terminal OK"
+    assert res == "Registry Terminal OK"
+    # The requesting channel is passed through for the audit trail.
+    fn.assert_called_once_with(command="git status", cwd=None, channel="web")
 
 
 def test_api_terminal_execute_endpoint():
@@ -62,20 +63,27 @@ def test_api_terminal_execute_empty_command():
 # ---------------------------------------------------------------------------
 #  Safety wiring
 # ---------------------------------------------------------------------------
-def test_terminal_is_listed_as_confirmation_required():
-    """The guard in terminal.py checks membership of this set. Without the
-    entry the check was dead code: GIDEON_REQUIRE_CONFIRMATION=1 still ran
+def test_terminal_is_declared_as_confirmation_required():
+    """Without this, GIDEON_REQUIRE_CONFIRMATION=1 still let the model run
     arbitrary commands."""
-    import config
+    assert get_tool("run_terminal_command").confirm is True
+    assert get_tool("launch_app").confirm is True
 
-    assert "run_terminal_command" in config.CONFIRM_REQUIRED_TOOLS
+
+def test_agent_confirmation_gate_blocks_confirm_tools(monkeypatch):
+    from gideon.brain import agent
+
+    monkeypatch.setattr(agent, "REQUIRE_CONFIRMATION", True)
+    with patch.object(get_tool("launch_app"), "fn") as fn:
+        result = agent.execute_tool("launch_app", {"app_name": "notepad"})
+    assert "confirmation" in result
+    fn.assert_not_called()
 
 
 def test_confirmation_gate_blocks_execution_when_enabled(monkeypatch):
-    import tools.terminal as t
+    import gideon.tools.terminal as t
 
     monkeypatch.setattr(t, "REQUIRE_CONFIRMATION", True)
-    monkeypatch.setattr(t, "CONFIRM_REQUIRED_TOOLS", {"run_terminal_command"})
 
     result = t.run_terminal_command("echo SHOULD_NOT_RUN")
     assert "confirmation required" in result.lower()
@@ -86,7 +94,7 @@ def test_terminal_publishes_threadsafe_not_direct():
     """Tools run in FastAPI's worker threads, not the event loop.
     asyncio.Queue.put_nowait is not thread-safe from another thread."""
     source = (
-        __import__("pathlib").Path(__file__).parent.parent / "tools" / "terminal.py"
+        __import__("pathlib").Path(__file__).parent.parent / "gideon" / "tools" / "terminal.py"
     ).read_text(encoding="utf-8")
     assert "bus.publish_threadsafe(" in source
     assert "bus.publish(" not in source

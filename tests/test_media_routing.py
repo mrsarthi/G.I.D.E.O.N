@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from orchestrator import correct_media_tool_choice, extract_media_query, should_offer_tools
+from gideon.brain.intent import correct_media_tool_choice, extract_media_query, should_offer_tools
 
 
 # ---------------------------------------------------------------------------
@@ -140,7 +140,7 @@ def test_music_requests_reach_the_tools(prompt):
 # ---------------------------------------------------------------------------
 def test_specific_play_tool_precedes_the_generic_one():
     """Small models are order-biased; the specific tool must come first."""
-    from tools.registry import OLLAMA_TOOLS
+    from gideon.tools.registry import OLLAMA_TOOLS
 
     names = [t["function"]["name"] for t in OLLAMA_TOOLS]
     assert names.index("play_youtube_music") < names.index("control_media")
@@ -162,9 +162,8 @@ def test_specific_play_tool_precedes_the_generic_one():
 )
 def test_malformed_media_actions_are_normalised(action, expected_fragment, monkeypatch):
     """A rejected action left the user's 'pause' command doing nothing."""
-    import ctypes
 
-    import tools.media_and_docs as md
+    import gideon.tools.media_and_docs as md
 
     sent = []
     monkeypatch.setattr(
@@ -181,6 +180,6 @@ def test_malformed_media_actions_are_normalised(action, expected_fragment, monke
 
 
 def test_genuinely_unknown_action_is_still_rejected():
-    import tools.media_and_docs as md
+    import gideon.tools.media_and_docs as md
 
     assert "Unknown media action" in md.control_media("teleport")

@@ -10,14 +10,12 @@ Unit tests for new G.I.D.E.O.N tools:
 import json
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-from tools.finance import get_financial_data
-from tools.geolocation import get_ip_info
-from tools.knowledge import query_wolfram_alpha
-from tools.news import get_hackernews
-from tools.registry import dispatch_tool_call
-from tools.weather import get_weather
+from gideon.tools.finance import get_financial_data
+from gideon.tools.geolocation import get_ip_info
+from gideon.tools.knowledge import query_wolfram_alpha
+from gideon.tools.news import get_hackernews
+from gideon.tools.registry import dispatch_tool_call, get_tool
+from gideon.tools.weather import get_weather
 
 
 # ---------------------------------------------------------------------------
@@ -173,7 +171,7 @@ def test_get_hackernews_success():
 #  Wolfram Alpha Tests
 # ---------------------------------------------------------------------------
 def test_query_wolfram_alpha_unconfigured():
-    with patch("tools.knowledge.WOLFRAM_ALPHA_APP_ID", ""):
+    with patch("gideon.tools.knowledge.WOLFRAM_ALPHA_APP_ID", ""):
         res = query_wolfram_alpha("distance to mars")
         assert "integration is not configured" in res
 
@@ -183,7 +181,7 @@ def test_query_wolfram_alpha_success():
     mock_resp.read.return_value = b"225 million km"
     mock_resp.__enter__.return_value = mock_resp
 
-    with patch("tools.knowledge.WOLFRAM_ALPHA_APP_ID", "TEST_APP_ID"), patch(
+    with patch("gideon.tools.knowledge.WOLFRAM_ALPHA_APP_ID", "TEST_APP_ID"), patch(
         "urllib.request.urlopen", return_value=mock_resp
     ):
         res = query_wolfram_alpha("distance to mars")
@@ -194,20 +192,16 @@ def test_query_wolfram_alpha_success():
 #  Registry Dispatch Tests
 # ---------------------------------------------------------------------------
 def test_dispatch_new_tools():
-    with patch("tools.registry.get_weather", return_value="Weather OK"):
-        assert dispatch_tool_call("get_weather", {"location": "London"}) == "Weather OK"
-
-    with patch("tools.registry.get_financial_data", return_value="Finance OK"):
-        assert dispatch_tool_call("get_financial_data", {"symbol": "TSLA"}) == "Finance OK"
-
-    with patch("tools.registry.get_hackernews", return_value="HN OK"):
-        assert dispatch_tool_call("get_hackernews", {"category": "top"}) == "HN OK"
-
-    with patch("tools.registry.get_ip_info", return_value="IP OK"):
-        assert dispatch_tool_call("get_ip_info", {}) == "IP OK"
-
-    with patch("tools.registry.query_wolfram_alpha", return_value="Wolfram OK"):
-        assert dispatch_tool_call("query_wolfram_alpha", {"query": "5+5"}) == "Wolfram OK"
+    """Each declared tool is reachable by name through the dispatcher."""
+    for name, args in (
+        ("get_weather", {"location": "London"}),
+        ("get_financial_data", {"symbol": "TSLA"}),
+        ("get_hackernews", {"category": "top"}),
+        ("get_ip_info", {}),
+        ("query_wolfram_alpha", {"query": "5+5"}),
+    ):
+        with patch.object(get_tool(name), "fn", return_value=f"{name} OK"):
+            assert dispatch_tool_call(name, args) == f"{name} OK"
 
 
 # ---------------------------------------------------------------------------
@@ -216,12 +210,12 @@ def test_dispatch_new_tools():
 def test_prompt_budget_cannot_overflow_the_context_window():
     """Adding tools grew the schemas past the hardcoded reserve, letting the
     assembled prompt exceed num_ctx (Ollama then truncates the system prompt)."""
-    import config
-    import orchestrator
+    from gideon.brain import prompt
+    from gideon.core import config
 
     worst_case = (
-        orchestrator.EFFECTIVE_PROMPT_BUDGET
-        + orchestrator.TOOL_SCHEMA_TOKENS
+        prompt.EFFECTIVE_PROMPT_BUDGET
+        + prompt.TOOL_SCHEMA_TOKENS
         + config.RESPONSE_RESERVE
         + config.MEMORY_RESERVE
     )
@@ -229,10 +223,10 @@ def test_prompt_budget_cannot_overflow_the_context_window():
 
 
 def test_measured_schema_cost_is_used_not_the_stale_constant():
-    import orchestrator
-    from tools.registry import OLLAMA_TOOLS
+    from gideon.brain import prompt
+    from gideon.tools.registry import OLLAMA_TOOLS
 
-    assert orchestrator.TOOL_SCHEMA_TOKENS > 0
+    assert prompt.TOOL_SCHEMA_TOKENS > 0
     assert len(OLLAMA_TOOLS) >= 16
 
 
@@ -245,7 +239,7 @@ def test_wolfram_retries_transient_501(monkeypatch):
     import urllib.error
     from unittest.mock import MagicMock
 
-    import tools.knowledge as k
+    import gideon.tools.knowledge as k
 
     monkeypatch.setattr(k, "WOLFRAM_ALPHA_APP_ID", "TESTID")
     monkeypatch.setattr(k.time, "sleep", lambda _: None)
@@ -273,7 +267,7 @@ def test_wolfram_gives_up_after_max_attempts(monkeypatch):
     """A genuinely unanswerable query must not retry forever."""
     import urllib.error
 
-    import tools.knowledge as k
+    import gideon.tools.knowledge as k
 
     monkeypatch.setattr(k, "WOLFRAM_ALPHA_APP_ID", "TESTID")
     monkeypatch.setattr(k.time, "sleep", lambda _: None)
@@ -295,7 +289,7 @@ def test_wolfram_invalid_appid_does_not_retry(monkeypatch):
     """403 is permanent; retrying wastes the user's monthly quota."""
     import urllib.error
 
-    import tools.knowledge as k
+    import gideon.tools.knowledge as k
 
     monkeypatch.setattr(k, "WOLFRAM_ALPHA_APP_ID", "BAD")
     calls = {"n": 0}

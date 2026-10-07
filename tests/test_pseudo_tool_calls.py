@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from orchestrator import parse_pseudo_tool_call
+from gideon.brain.toolcalls import parse_pseudo_tool_call
 
 
 def test_intercepts_the_observed_failure():
@@ -87,7 +87,7 @@ def test_json_object_without_a_name_is_left_as_speech():
 def test_unknown_tool_name_still_intercepted_then_handled_by_dispatcher():
     """Interception must happen even for tools that do not exist, so the
     dispatcher can tell the model instead of the user hearing JSON."""
-    from tools.registry import dispatch_tool_call
+    from gideon.tools.registry import dispatch_tool_call
 
     call = parse_pseudo_tool_call('{"name": "explain_memory", "parameters": {}}')
     assert call is not None

@@ -1,4 +1,7 @@
-# Databases
+# Runtime state (database, vector store, logs, WebView profile)
+data/
+
+# Legacy root locations, used until scripts/migrate_data_dir.py runs
 gideon.db
 gideon.db-shm
 gideon.db-wal
@@ -36,6 +39,15 @@ logs/
 *.log
 static/audio/
 static/test_piper.wav
+# Drawn by the tray on first run, not versioned.
+static/gideon.ico
+
+# WebView2 profile for the quick-ask window.
+.webview/
+
+# Node deploy state; secrets live in `wrangler secret`, never in the repo.
+node/node_modules/
+node/.wrangler/
 .macco/
 macco_analysis.md
 

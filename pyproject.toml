@@ -14,12 +14,23 @@ dependencies = [
     # fastapi/uvicorn/pydantic were only present transitively via chromadb.
     # Declared explicitly so a chromadb bump cannot break the web server.
     "fastapi>=0.115",
+    # Only present transitively via ollama. Declared because remote_scheduler
+    # depends on it directly and an ollama bump must not break reminders.
+    "httpx>=0.27",
     "kokoro-onnx>=0.3.1",
     "ollama",
     "piper-tts>=1.6.0",
     "psutil>=7.2.2",
     "pycaw>=20251023",
     "pydantic>=2.9",
+    # gideon_tray.py: notification-area icon, its drawn glyph, and the
+    # pre-warmed WebView2 window the global hotkey summons. Deliberately NOT
+    # the `keyboard` package — that installs a low-level global hook, which is
+    # a keylogger by any technical definition. The hotkey uses Win32
+    # RegisterHotKey via ctypes instead: no hook, no admin, no AV flag.
+    "pillow>=10.0",
+    "pystray>=0.19",
+    "pywebview>=6.0",
     "pypdf>=6.14.2",
     "pyperclip>=1.11.0",
     "python-telegram-bot>=21.0",
@@ -31,9 +42,37 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "mypy>=2.4.0",
+    "pre-commit>=4.6.2",
     "pytest>=8.3",
+    "ruff>=0.16.10",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+extend-exclude = ["scratch", "node"]
+
+[tool.ruff.lint]
+# pyflakes, pycodestyle, import sorting, bugbear, pyupgrade, simplify.
+select = ["F", "E", "W", "I", "B", "UP", "SIM"]
+ignore = [
+    "E501",    # long lines: tool descriptions are prompt text, not code
+    "B008",    # FastAPI's Depends() in defaults is the intended idiom
+    "SIM105",  # try/except/pass reads clearer than contextlib.suppress here
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["gideon"]
+
+[tool.mypy]
+files = ["gideon"]
+python_version = "3.13"
+ignore_missing_imports = true
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true

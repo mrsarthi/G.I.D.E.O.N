@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from tools.terminal import check_command_safety
+from gideon.tools.terminal import check_command_safety
 
 
 # ---------------------------------------------------------------------------
@@ -78,14 +78,14 @@ def test_destructive_suffix_cannot_hide_behind_a_safe_prefix(command):
 
 
 def test_denylist_can_be_disabled_by_config(monkeypatch):
-    import tools.terminal as t
+    import gideon.tools.terminal as t
 
     monkeypatch.setattr(t, "ENFORCE_COMMAND_DENYLIST", False)
     assert t.check_command_safety("format c:") is None
 
 
 def test_refusal_does_not_execute(monkeypatch):
-    import tools.terminal as t
+    import gideon.tools.terminal as t
 
     called = {"ran": False}
     monkeypatch.setattr(t.subprocess, "Popen", lambda *a, **k: called.__setitem__("ran", True))
@@ -99,7 +99,7 @@ def test_refusal_does_not_execute(monkeypatch):
 #  Per-channel policy
 # ---------------------------------------------------------------------------
 def test_telegram_cannot_see_the_shell_schema():
-    from tools.registry import tools_for_channel
+    from gideon.tools.registry import tools_for_channel
 
     names = {t["function"]["name"] for t in tools_for_channel("telegram")}
     assert "run_terminal_command" not in names
@@ -109,17 +109,19 @@ def test_telegram_cannot_see_the_shell_schema():
 
 
 def test_web_channel_keeps_every_tool():
-    from tools.registry import OLLAMA_TOOLS, tools_for_channel
+    from gideon.tools.registry import OLLAMA_TOOLS, tools_for_channel
 
     assert len(tools_for_channel("web")) == len(OLLAMA_TOOLS)
 
 
 def test_telegram_dispatch_is_refused_even_if_the_model_asks(monkeypatch):
     """Defence in depth: withholding the schema is first, refusing is second."""
-    import tools.registry as r
+    import gideon.tools.registry as r
 
     called = {"ran": False}
-    monkeypatch.setattr(r, "run_terminal_command", lambda *a, **k: called.__setitem__("ran", True))
+    monkeypatch.setattr(
+        r.get_tool("run_terminal_command"), "fn", lambda *a, **k: called.__setitem__("ran", True)
+    )
 
     result = r.dispatch_tool_call(
         "run_terminal_command", {"command": "echo hi"}, channel="telegram"
@@ -132,11 +134,11 @@ def test_telegram_dispatch_is_refused_even_if_the_model_asks(monkeypatch):
 #  Audit trail
 # ---------------------------------------------------------------------------
 def test_allowed_command_is_audited():
-    from db import get_db
+    from gideon.storage.db import get_db
 
     db = get_db()
     before = len(db.get_command_audit(limit=200))
-    from tools.terminal import run_terminal_command
+    from gideon.tools.terminal import run_terminal_command
 
     run_terminal_command("echo AUDIT_TEST_OK")
     rows = db.get_command_audit(limit=200)
@@ -150,8 +152,8 @@ def test_allowed_command_is_audited():
 
 def test_refused_command_is_also_audited():
     """A blocked attempt is exactly what you want a record of."""
-    from db import get_db
-    from tools.terminal import run_terminal_command
+    from gideon.storage.db import get_db
+    from gideon.tools.terminal import run_terminal_command
 
     db = get_db()
     run_terminal_command("format z:")
@@ -163,8 +165,8 @@ def test_refused_command_is_also_audited():
 
 
 def test_audit_records_the_channel():
-    from db import get_db
-    from tools.terminal import run_terminal_command
+    from gideon.storage.db import get_db
+    from gideon.tools.terminal import run_terminal_command
 
     db = get_db()
     run_terminal_command("echo CHANNEL_TEST", channel="web")
@@ -177,7 +179,7 @@ def test_audit_records_the_channel():
 def test_timeout_kills_the_process_tree(monkeypatch):
     import subprocess
 
-    import tools.terminal as t
+    import gideon.tools.terminal as t
 
     killed = {"tree": False}
 

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from memory import isWorthRemembering
-from tools.desktop import KNOWN_APPS, launch_app
-from tools.registry import OLLAMA_TOOLS, VALID_TOOL_NAMES, dispatch_tool_call
+from gideon.storage.memory import is_worth_remembering as isWorthRemembering
+from gideon.tools.desktop import KNOWN_APPS, launch_app
+from gideon.tools.registry import OLLAMA_TOOLS, VALID_TOOL_NAMES, dispatch_tool_call
 
 
 # ---------------------------------------------------------------------------
@@ -14,9 +14,25 @@ from tools.registry import OLLAMA_TOOLS, VALID_TOOL_NAMES, dispatch_tool_call
 # ---------------------------------------------------------------------------
 def test_every_schema_has_a_handler():
     """A schema without a handler is a tool the model can call into a wall."""
-    from tools.registry import _HANDLERS
+    from gideon.tools.registry import get_tool
 
-    assert VALID_TOOL_NAMES <= set(_HANDLERS)
+    for name in VALID_TOOL_NAMES:
+        assert callable(get_tool(name).fn)
+
+
+def test_declared_params_match_the_python_signature():
+    """A schema parameter mapped to a kwarg the function does not accept would
+    raise TypeError on the first real call, not at import."""
+    import inspect
+
+    from gideon.tools.registry import all_tools
+
+    for spec in all_tools():
+        accepted = set(inspect.signature(spec.fn).parameters)
+        for param in spec.params:
+            assert (param.kwarg or param.name) in accepted, (spec.name, param.name)
+        if spec.wants_channel:
+            assert "channel" in accepted, spec.name
 
 
 def test_schemas_are_well_formed():
@@ -38,11 +54,26 @@ def test_dispatch_survives_non_dict_arguments():
 
 def test_argument_aliases_are_accepted():
     """Small models rename parameters; the dispatcher normalises them."""
-    from tools.registry import _first_arg
+    from gideon.tools.base import Param
 
-    assert _first_arg({"query": "x"}, "file_name_or_extension", "query") == "x"
-    assert _first_arg({}, "missing", default="fallback") == "fallback"
-    assert _first_arg({"text": ""}, "text", default="fallback") == "fallback"
+    param = Param("file_name_or_extension", "", aliases=("query",), default="fallback")
+    assert param.resolve({"query": "x"}) == "x"
+    assert param.resolve({}) == "fallback"
+    assert param.resolve({"file_name_or_extension": ""}) == "fallback"
+
+
+def test_integer_params_are_coerced_with_a_safe_fallback():
+    from gideon.tools.registry import get_tool
+
+    bound = get_tool("get_hackernews").bind({"limit": "7", "cat": "ask"})
+    assert bound == {"category": "ask", "limit": 7}
+    assert get_tool("get_hackernews").bind({"limit": "lots"})["limit"] == 5
+
+
+def test_schema_names_map_onto_python_argument_names():
+    from gideon.tools.registry import get_tool
+
+    assert get_tool("search_files").bind({"filename": "main.py"}) == {"query": "main.py"}
 
 
 # ---------------------------------------------------------------------------
@@ -98,7 +129,7 @@ def test_substantive_message_is_indexed():
 #  Streaming speech chunking
 # ---------------------------------------------------------------------------
 def test_incomplete_sentence_is_held_back():
-    from server import split_ready_sentences
+    from gideon.voice.streaming import split_ready_sentences
 
     sentences, remainder = split_ready_sentences("Your GPU is running")
     assert sentences == []
@@ -107,7 +138,7 @@ def test_incomplete_sentence_is_held_back():
 
 def test_complete_sentence_is_released_early():
     """This is what lets speech start before generation finishes."""
-    from server import split_ready_sentences
+    from gideon.voice.streaming import split_ready_sentences
 
     sentences, remainder = split_ready_sentences(
         "Your GPU is at twelve percent, boss. Memory looks"
@@ -117,7 +148,7 @@ def test_complete_sentence_is_released_early():
 
 
 def test_multiple_sentences_split_in_order():
-    from server import split_ready_sentences
+    from gideon.voice.streaming import split_ready_sentences
 
     sentences, _ = split_ready_sentences(
         "First observation here. Second observation here. Third one trails"
@@ -127,7 +158,7 @@ def test_multiple_sentences_split_in_order():
 
 def test_short_fragments_merge_forward():
     """A stray 'Yes.' should not become its own audio file."""
-    from server import split_ready_sentences
+    from gideon.voice.streaming import split_ready_sentences
 
     sentences, _ = split_ready_sentences("Yes. That is correct about the GPU. Next")
     assert all(len(s) >= 12 for s in sentences)
@@ -135,7 +166,7 @@ def test_short_fragments_merge_forward():
 
 
 def test_question_and_exclamation_terminate_sentences():
-    from server import split_ready_sentences
+    from gideon.voice.streaming import split_ready_sentences
 
     sentences, _ = split_ready_sentences("Shall I proceed with that? Awaiting orders")
     assert sentences == ["Shall I proceed with that?"]
@@ -144,7 +175,7 @@ def test_question_and_exclamation_terminate_sentences():
 def test_search_uses_the_maintained_ddgs_package():
     """duckduckgo_search is abandoned: it imports fine but returns zero
     results for most queries, with no exception to signal the failure."""
-    from tools.web_and_clipboard import DDGS
+    from gideon.tools.web_and_clipboard import DDGS
 
     assert DDGS is not None
     assert DDGS.__module__.startswith("ddgs"), (

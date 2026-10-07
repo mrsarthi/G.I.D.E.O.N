@@ -1,0 +1,27 @@
+name = "gideon-reminders"
+main = "worker.js"
+compatibility_date = "2025-01-01"
+
+# Once a minute. The desktop polls every 30s when it is up, so a reminder is
+# at worst a minute late when only the node is running — well inside the
+# 15-minute grace window the desktop uses to decide something was missed.
+[triggers]
+crons = ["* * * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "gideon-reminders"
+database_id = "PASTE_THE_ID_FROM_wrangler_d1_create"
+
+[vars]
+# Desktop offset from UTC in minutes; 330 = IST. The desktop stores naive
+# local timestamps, so the node has to compare in the same frame or every
+# reminder fires hours off.
+GIDEON_TZ_OFFSET_MINUTES = "330"
+# Comma-separated numeric Telegram user IDs. Used when a reminder has no
+# originating chat — i.e. one set at the desktop.
+TELEGRAM_ALLOWED_USERS = ""
+
+# Secrets are NOT set here. Push them with:
+#   wrangler secret put TELEGRAM_BOT_TOKEN
+#   wrangler secret put GIDEON_NODE_TOKEN

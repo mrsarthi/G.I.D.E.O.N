@@ -6,11 +6,11 @@ these assertions are what stop the regressions from coming back.
 
 from __future__ import annotations
 
-import orchestrator
-from orchestrator import (
+from gideon.brain.prompt import (
     STATIC_SYSTEM_PROMPT,
-    _is_context_worthy,
+    estimate_tokens,
     format_messages_for_ollama,
+    is_context_worthy,
 )
 
 
@@ -85,16 +85,16 @@ def test_empty_history_still_includes_user_prompt():
 
 def test_tool_bookkeeping_never_replays_as_speech():
     """Assistant rows saying '[Tool Call: ...]' taught the model to narrate."""
-    assert not _is_context_worthy("assistant", "[Tool Call: get_system_status]")
-    assert not _is_context_worthy("tool_call", "[Tool Call: launch_app]")
-    assert not _is_context_worthy("tool", "CPU Utilization: 12%")
-    assert _is_context_worthy("assistant", "Your GPU is at 12%, boss.")
+    assert not is_context_worthy("assistant", "[Tool Call: get_system_status]")
+    assert not is_context_worthy("tool_call", "[Tool Call: launch_app]")
+    assert not is_context_worthy("tool", "CPU Utilization: 12%")
+    assert is_context_worthy("assistant", "Your GPU is at 12%, boss.")
 
 
 def test_blank_messages_are_dropped():
-    assert not _is_context_worthy("user", "   ")
+    assert not is_context_worthy("user", "   ")
 
 
 def test_token_estimate_is_monotonic():
-    assert orchestrator.estimateTokens("") == 0
-    assert orchestrator.estimateTokens("a" * 400) > orchestrator.estimateTokens("a" * 40)
+    assert estimate_tokens("") == 0
+    assert estimate_tokens("a" * 400) > estimate_tokens("a" * 40)
