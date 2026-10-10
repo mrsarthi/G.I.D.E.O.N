@@ -58,6 +58,7 @@ def _get_ytmusic_client() -> Any | None:
         aliases=("filter",),
         default=None,
     ),
+    untrusted_output=True,
     triggers={"youtube", "yt", "album", "playlist", "artist"},
 )
 def search_youtube_music(query: str, search_filter: str | None = None) -> str:

@@ -63,31 +63,23 @@ def test_api_terminal_execute_empty_command():
 # ---------------------------------------------------------------------------
 #  Safety wiring
 # ---------------------------------------------------------------------------
-def test_terminal_is_declared_as_confirmation_required():
-    """Without this, GIDEON_REQUIRE_CONFIRMATION=1 still let the model run
-    arbitrary commands."""
-    assert get_tool("run_terminal_command").confirm is True
-    assert get_tool("launch_app").confirm is True
+def test_privileged_tools_are_declared():
+    """The shell always waits for approval; both it and app launching are
+    privileged, so outside content can never reach them unattended."""
+    shell, launcher = get_tool("run_terminal_command"), get_tool("launch_app")
+    assert shell.confirm is True
+    assert shell.privileged is True
+    assert launcher.privileged is True
 
 
-def test_agent_confirmation_gate_blocks_confirm_tools(monkeypatch):
-    from gideon.brain import agent
-
-    monkeypatch.setattr(agent, "REQUIRE_CONFIRMATION", True)
-    with patch.object(get_tool("launch_app"), "fn") as fn:
-        result = agent.execute_tool("launch_app", {"app_name": "notepad"})
-    assert "confirmation" in result
-    fn.assert_not_called()
-
-
-def test_confirmation_gate_blocks_execution_when_enabled(monkeypatch):
+def test_drawer_commands_are_not_gated(monkeypatch):
+    """The HUD's terminal drawer is the user typing the command themselves:
+    that is the approval, so the tool function must not block it."""
     import gideon.tools.terminal as t
 
-    monkeypatch.setattr(t, "REQUIRE_CONFIRMATION", True)
-
-    result = t.run_terminal_command("echo SHOULD_NOT_RUN")
-    assert "confirmation required" in result.lower()
-    assert "SHOULD_NOT_RUN" not in result.replace("echo SHOULD_NOT_RUN", "")
+    result = t.run_terminal_command("echo DRAWER_RAN")
+    assert "DRAWER_RAN" in result
+    assert "Return Code: 0" in result
 
 
 def test_terminal_publishes_threadsafe_not_direct():

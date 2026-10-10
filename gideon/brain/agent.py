@@ -4,6 +4,15 @@ G.I.D.E.O.N Agent
 The one conversational loop every interface shares. The web API, Telegram,
 the quick-ask window and the CLI all call Agent.stream / Agent.respond; none
 of them talk to Ollama, the prompt builder or the tool registry directly.
+
+Tool calls pass through one policy before they run:
+
+* `confirm` tools (the shell) wait for the user's approval when
+  GIDEON_REQUIRE_CONFIRMATION is on — the default.
+* `privileged` tools (shell, app launching) wait for approval whenever a tool
+  that returns outside content (web search, documents, clipboard) already ran
+  in this turn. That content may carry instructions written by someone else;
+  the user's click, not the model, is what lets it touch the machine.
 """
 
 from __future__ import annotations
@@ -15,8 +24,15 @@ from typing import Any
 
 import ollama
 
+from gideon.brain.approvals import ApprovalQueue, action_payload
 from gideon.brain.intent import correct_media_tool_choice, should_offer_tools
-from gideon.brain.prompt import build_context_window, format_messages_for_ollama
+from gideon.brain.llm import BATTERY_PAUSED_REPLY, chat_options, model_paused, thinking_kwargs
+from gideon.brain.prompt import (
+    build_context_window,
+    fit_tool_result,
+    format_messages_for_ollama,
+    trim_to_budget,
+)
 from gideon.brain.toolcalls import (
     PSEUDO_CALL_CHAR_LIMIT,
     extract_chunk_content,
@@ -25,11 +41,11 @@ from gideon.brain.toolcalls import (
     json_start_index,
     parse_pseudo_tool_call,
 )
+from gideon.brain.traces import TraceRecorder, TraceStore, ollama_stats
 from gideon.core.config import (
     CHAT_KEEP_ALIVE,
     CHAT_MODEL,
     MAX_TOOL_TURNS,
-    OLLAMA_OPTIONS,
     REQUIRE_CONFIRMATION,
 )
 from gideon.core.context import current_channel, current_session
@@ -47,15 +63,24 @@ OFFLINE_REPLY = (
 EXHAUSTED_REPLY = "I wasn't able to finish that one — the tool chain ran too long."
 
 
-def execute_tool(name: str, args: dict[str, Any], channel: str = "web") -> str:
-    """Run a tool behind the confirmation gate, converting failures to text."""
+# Per-turn events an interface may want to render (an approval card).
+OnEvent = Callable[[dict[str, Any]], None]
+
+
+def approval_reason(name: str, untrusted_seen: bool) -> str | None:
+    """Why this call must wait for the user, or None if it may run now."""
     spec = get_tool(name)
-    if REQUIRE_CONFIRMATION and spec is not None and spec.confirm:
-        log.info("Tool %s blocked pending user confirmation", name)
-        return (
-            f"The '{name}' action needs the user's explicit confirmation before it can run. "
-            f"Ask the user to confirm they want this, then wait for their reply."
-        )
+    if spec is None:
+        return None
+    if spec.confirm and REQUIRE_CONFIRMATION:
+        return "this action always needs your approval"
+    if spec.privileged and untrusted_seen:
+        return "outside content was read earlier in this request"
+    return None
+
+
+def execute_tool(name: str, args: dict[str, Any], channel: str = "web") -> str:
+    """Run a tool, converting failures to text. Policy is the caller's job."""
     try:
         return dispatch_tool_call(name, args, channel=channel)
     except Exception as exc:
@@ -63,17 +88,34 @@ def execute_tool(name: str, args: dict[str, Any], channel: str = "web") -> str:
         return f"The {name} tool failed: {exc}"
 
 
+# (name, args, channel) -> result text. Swapped out by the eval runner so a
+# test turn never launches an app or runs a command.
+ToolExecutor = Callable[[str, dict[str, Any], str], str]
+
+
 class Agent:
     def __init__(
         self,
         db: DatabaseManager,
         memory: VectorMemory | None,
+        approvals: ApprovalQueue | None = None,
         chat: Callable[..., Any] = ollama.chat,
+        *,
+        model: str = CHAT_MODEL,
+        traces: TraceStore | None = None,
+        tool_executor: ToolExecutor | None = None,
+        option_overrides: dict[str, Any] | None = None,
     ) -> None:
         self.db = db
         self.memory = memory
+        self.approvals = approvals or ApprovalQueue(db)
         # Injectable so tests can drive the loop without a running Ollama.
         self._chat = chat
+        # Configurable so the eval can compare models without touching config.
+        self.model = model
+        self.traces = traces or TraceStore(db)
+        self._execute = tool_executor or (lambda name, args, channel: execute_tool(name, args, channel))
+        self._option_overrides = dict(option_overrides or {})
 
     # ------------------------------------------------------------------
     #  Persistence
@@ -88,8 +130,11 @@ class Agent:
         """Persist the incoming message before generating.
 
         stream() builds its context from SQLite. If the prompt is not stored
-        first, the model answers the previous turn instead.
+        first, the model answers the previous turn instead. A message that
+        reads like a correction ("no, I meant…") is also recorded against the
+        previous turn's trace.
         """
+        self.traces.note_user_message(session_id, text)
         message_id = self.db.insert_message(session_id, "user", text)
         self._remember(message_id, text, session_id, "user")
         return message_id
@@ -97,16 +142,62 @@ class Agent:
     # ------------------------------------------------------------------
     #  The loop
     # ------------------------------------------------------------------
-    def stream(self, session_id: str, user_prompt: str, channel: str = "web") -> Iterator[str]:
+    def stream(
+        self,
+        session_id: str,
+        user_prompt: str,
+        channel: str = "web",
+        on_event: OnEvent | None = None,
+    ) -> Iterator[str]:
         """Stream a reply, executing tools in between passes when the model asks.
 
-        Yields plain text deltas. Raises nothing: transport failures are
-        converted into a spoken apology so an SSE stream always terminates
-        cleanly.
+        Yields plain text deltas. Out-of-band events go to `on_event`: the
+        turn's trace id first (so an interface can attach feedback to it),
+        then any action waiting for approval. Raises nothing: transport
+        failures are converted into a spoken apology so an SSE stream always
+        terminates cleanly. Every turn is traced, including failed ones.
         """
+        trace = TraceRecorder(session_id, channel, user_prompt, self.model)
+        if on_event is not None:
+            on_event({"trace_id": trace.trace_id})
+        try:
+            for text in self._run(trace, session_id, user_prompt, channel, on_event):
+                trace.text_emitted(text)
+                yield text
+        finally:
+            # Also reached when the client disconnects mid-stream (outcome
+            # stays "aborted"), which is itself worth knowing.
+            self.traces.save(trace)
+
+    def _run(
+        self,
+        trace: TraceRecorder,
+        session_id: str,
+        user_prompt: str,
+        channel: str,
+        on_event: OnEvent | None,
+    ) -> Iterator[str]:
+        if model_paused():
+            # On battery with GIDEON_ON_BATTERY=off. Not stored as an
+            # assistant turn, so it never replays as conversation.
+            trace.outcome = "paused"
+            yield BATTERY_PAUSED_REPLY
+            return
+
         db = self.db
         context_messages = build_context_window(db, session_id)
-        messages = format_messages_for_ollama(db, self.memory, context_messages, user_prompt)
+        trace.stage("history")
+        messages = format_messages_for_ollama(
+            db,
+            self.memory,
+            context_messages,
+            user_prompt,
+            actions=self.approvals.recent(session_id),
+        )
+        trace.stage("prompt")  # includes memory recall
+        # Set once a tool returns text from outside the user's control.
+        untrusted_seen = False
+        ran_tool = requested_approval = False
 
         # Read by tools (set_reminder) to learn where this turn came from.
         current_channel.set(channel)
@@ -116,28 +207,41 @@ class Agent:
         # Schemas are filtered per channel: a remote channel never even sees
         # the tools it is not allowed to run.
         channel_tools = tools_for_channel(channel)
+        trace.tools_offered = offer_tools
+        if offer_tools:
+            trace.tools_offered_names = [t["function"]["name"] for t in channel_tools]
         log.debug("Tools %s for this turn", "offered" if offer_tools else "withheld")
 
         for turn in range(MAX_TOOL_TURNS):
             full_ans = ""
             collected_tool_calls: list[dict[str, Any]] = []
+            messages = trim_to_budget(messages, tools_offered=offer_tools)
+            # Re-read per pass: unplugging mid-turn moves the next pass onto
+            # the CPU (brain/llm.py).
+            options = {**chat_options(), **self._option_overrides}
+            trace.placement = "cpu" if options.get("num_gpu") == 0 else "gpu"
+            record = trace.start_pass()
+            stats: dict[str, Any] = {}
             try:
                 stream = self._chat(
-                    model=CHAT_MODEL,
+                    model=self.model,
                     messages=messages,
                     tools=channel_tools if offer_tools else [],
                     stream=True,
-                    options=OLLAMA_OPTIONS,
+                    options=options,
                     keep_alive=CHAT_KEEP_ALIVE,
+                    **thinking_kwargs(self.model),
                 )
 
                 held = ""          # Buffered text from the first brace onwards.
                 suppress = False   # True after intercepting a text tool call.
 
                 for chunk in stream:
+                    trace.first_chunk(record, record["started_ms"], trace.elapsed_ms())
+                    stats = ollama_stats(chunk) or stats
                     calls = extract_tool_calls(chunk)
                     if calls:
-                        collected_tool_calls.extend(calls)
+                        collected_tool_calls.extend({**c, "source": "native"} for c in calls)
                         continue
 
                     token = extract_chunk_content(chunk)
@@ -167,7 +271,7 @@ class Agent:
                     pseudo = parse_pseudo_tool_call(held)
                     if is_tool_call_candidate(pseudo):
                         log.info("Intercepted text-emitted tool call: %s", pseudo["name"])
-                        collected_tool_calls.append(pseudo)
+                        collected_tool_calls.append({**pseudo, "source": "text"})
                         held, suppress = "", True
                     elif len(held) >= PSEUDO_CALL_CHAR_LIMIT:
                         # Too long to be a tool call — release it as speech.
@@ -180,35 +284,77 @@ class Agent:
                     pseudo = parse_pseudo_tool_call(held)
                     if is_tool_call_candidate(pseudo):
                         log.info("Intercepted end-of-stream tool call: %s", pseudo["name"])
-                        collected_tool_calls.append(pseudo)
+                        collected_tool_calls.append({**pseudo, "source": "text"})
                     else:
                         full_ans += held
                         yield held
 
-            except Exception:
+            except Exception as exc:
                 log.exception("Ollama stream failed on turn %d", turn)
+                trace.end_pass(record, stats)
+                trace.outcome, trace.error = "offline", str(exc)
                 yield OFFLINE_REPLY
                 return
+            trace.end_pass(record, stats)
 
             # No tools requested: this was the final answer.
             if not collected_tool_calls:
                 if full_ans.strip():
                     asst_id = db.insert_message(session_id, "assistant", full_ans)
                     self._remember(asst_id, full_ans, session_id, "assistant")
+                trace.outcome = (
+                    "approval_requested" if requested_approval
+                    else "tool" if ran_tool
+                    else "answered"
+                )
                 return
 
             # Tools requested: execute, feed results back, and loop.
             for tool_call in collected_tool_calls:
-                name = tool_call.get("name", "")
+                requested_name = tool_call.get("name", "")
                 args = tool_call.get("arguments", {})
                 if not isinstance(args, dict):
                     args = {}
 
                 # A 3B model cannot reliably tell "press play" from "play <song>".
-                name, args = correct_media_tool_choice(name, args, user_prompt)
+                name, args = correct_media_tool_choice(requested_name, args, user_prompt)
                 log.info("Tool call: %s(%s)", name, args)
 
-                tool_result = execute_tool(name, args, channel=channel)
+                started_ms = trace.elapsed_ms()
+                approval: dict[str, Any] | None = None
+                reason = approval_reason(name, untrusted_seen)
+                if reason:
+                    action = self.approvals.request(
+                        session_id, channel, name, args, trace_id=trace.trace_id
+                    )
+                    approval = {"action_id": action.action_id, "reason": reason}
+                    requested_approval = True
+                    if on_event is not None:
+                        on_event({"approval": {**action_payload(action), "reason": reason}})
+                    tool_result = (
+                        f"Not run yet: approval required because {reason}. Approval request "
+                        f"#{action.action_id} for {action.describe()} is now waiting for the user "
+                        f"in the interface. Tell them briefly what it will do and that it needs "
+                        f"their approval."
+                    )
+                else:
+                    tool_result = self._execute(name, args, channel)
+                    ran_tool = True
+
+                trace.tool_call(
+                    record,
+                    name=name,
+                    args=args,
+                    source=tool_call.get("source", "native"),
+                    corrected_from=requested_name if requested_name != name else None,
+                    approval=approval,
+                    result=tool_result,
+                    ms=trace.elapsed_ms() - started_ms,
+                )
+
+                spec = get_tool(name)
+                untrusted = bool(spec and spec.untrusted_output and not reason)
+                untrusted_seen = untrusted_seen or untrusted
 
                 # Stored as 'tool_call'/'tool' so build_context_window never
                 # replays them as something G.I.D.E.O.N said out loud.
@@ -228,11 +374,20 @@ class Agent:
                         "tool_calls": [{"function": {"name": name, "arguments": args}}],
                     }
                 )
-                messages.append({"role": "tool", "content": str(tool_result), "name": name})
+                messages.append(
+                    {"role": "tool", "content": fit_tool_result(tool_result, untrusted), "name": name}
+                )
 
         log.warning("Tool loop exhausted %d turns without a final answer", MAX_TOOL_TURNS)
+        trace.outcome = "exhausted"
         yield EXHAUSTED_REPLY
 
-    def respond(self, session_id: str, user_prompt: str, channel: str = "web") -> str:
+    def respond(
+        self,
+        session_id: str,
+        user_prompt: str,
+        channel: str = "web",
+        on_event: OnEvent | None = None,
+    ) -> str:
         """Run a whole turn and return the full reply text."""
-        return "".join(self.stream(session_id, user_prompt, channel))
+        return "".join(self.stream(session_id, user_prompt, channel, on_event))

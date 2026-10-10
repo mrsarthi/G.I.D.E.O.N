@@ -46,6 +46,7 @@ from ctypes import wintypes
 from pathlib import Path
 
 import httpx
+import psutil
 import pystray
 import webview
 from PIL import Image, ImageDraw
@@ -66,6 +67,11 @@ from gideon.core.config import (
 )
 from gideon.core.logs import bind_headless_streams, get_logger
 from gideon.core.security import API_TOKEN, API_TOKEN_HEADER
+from gideon.interfaces.shortcuts import (
+    autostart_enabled,
+    ensure_start_menu_entry,
+    set_autostart,
+)
 
 # Before the first get_logger(). Under pythonw.exe — which is how this is
 # normally launched, since it must not depend on a console staying open —
@@ -280,25 +286,34 @@ class Engine:
                 return
             if self.process and self.process.poll() is None:
                 return
+            if engine_process_running():
+                # Typically the boot task's engine, still loading Chroma and
+                # the voices. Starting another would race it for the port
+                # and, briefly, for Telegram's single getUpdates slot.
+                log.info("An engine process exists but is not answering yet; waiting for it")
+            else:
+                log.info("No engine at %s; starting one", BASE_URL)
+                self.process = self._spawn()
 
-            log.info("No engine at %s; starting one", BASE_URL)
-            # run_engine.py, not `-m uvicorn`: under pythonw there is no
-            # console, so sys.stderr is None and uvicorn's first log line
-            # kills the process with exit 1 before it binds. The launcher
-            # attaches real streams to the engine log first.
-            self.process = subprocess.Popen(
-                [self._python(), str(BASE_DIR / "run_engine.py")],
-                cwd=str(BASE_DIR),
-                # NEW_PROCESS_GROUP is what makes a graceful stop possible at
-                # all: it is the precondition for sending CTRL_BREAK, and
-                # without it TerminateProcess is the only option — which skips
-                # lifespan shutdown and leaves Telegram's getUpdates consumer
-                # registered, so the next start hits 409 Conflict.
-                creationflags=(
-                    subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
-                ),
-            )
+        self._await_health()
 
+    def _spawn(self) -> subprocess.Popen:
+        # run_engine.py, not `-m uvicorn`: under pythonw there is no console,
+        # so sys.stderr is None and uvicorn's first log line kills the process
+        # with exit 1 before it binds. The launcher attaches real streams to
+        # the engine log first.
+        return subprocess.Popen(
+            [self._python(), str(BASE_DIR / "run_engine.py")],
+            cwd=str(BASE_DIR),
+            # NEW_PROCESS_GROUP is what makes a graceful stop possible at all:
+            # it is the precondition for sending CTRL_BREAK, and without it
+            # TerminateProcess is the only option — which skips lifespan
+            # shutdown and leaves Telegram's getUpdates consumer registered,
+            # so the next start hits 409 Conflict.
+            creationflags=subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP,
+        )
+
+    def _await_health(self) -> None:
         # Cold start loads ChromaDB, Kokoro and Piper; this is genuinely slow.
         deadline = time.time() + ENGINE_START_TIMEOUT
         while time.time() < deadline:
@@ -370,11 +385,45 @@ class Engine:
             self._shutdown_child()
 
     def watch(self, stop: threading.Event, on_change=None) -> None:
-        """Poll health so the tray can show engine state without being asked."""
-        while not stop.wait(20):
+        """Poll health, and bring the engine back if it has died.
+
+        Restarts only after two consecutive failed probes (~40s) and only when
+        no engine process exists at all: a process that is alive but not
+        answering is starting up (or the boot task is retrying it), and a
+        second one would fight it for the port.
+        """
+        failures = 0
+        while not stop.wait(WATCH_INTERVAL_SECONDS):
             was_alive = self.alive
-            if self.probe() != was_alive and on_change:
+            alive = self.probe()
+            if alive != was_alive and on_change:
                 on_change()
+            failures = 0 if alive else failures + 1
+            if failures >= RESTART_AFTER_FAILURES and not engine_process_running():
+                log.warning("Engine unreachable for ~%ds with no process; restarting it",
+                            failures * WATCH_INTERVAL_SECONDS)
+                failures = 0
+                self.start()
+                if on_change:
+                    on_change()
+
+
+WATCH_INTERVAL_SECONDS = 20
+RESTART_AFTER_FAILURES = 2
+_ENGINE_MARKERS = ("run_engine.py", "gideon.interfaces.api.app")
+
+
+def engine_process_running() -> bool:
+    """Whether any process looks like a G.I.D.E.O.N engine (boot task, tray
+    child, or run.bat in a console)."""
+    for proc in psutil.process_iter(["cmdline"]):
+        try:
+            cmdline = " ".join(proc.info.get("cmdline") or [])
+        except (psutil.Error, TypeError):
+            continue
+        if any(marker in cmdline for marker in _ENGINE_MARKERS):
+            return True
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -658,6 +707,8 @@ def main() -> int:
     stop_event = threading.Event()
 
     threading.Thread(target=engine.start, name="gideon-engine", daemon=True).start()
+    # So it can be found by typing "GIDEON" in Windows search.
+    threading.Thread(target=ensure_start_menu_entry, name="gideon-shortcut", daemon=True).start()
 
     hotkey = HotkeyListener(on_hotkey=quick.toggle, on_show=quick.summon)
     hotkey.start()
@@ -685,6 +736,13 @@ def main() -> int:
                 lambda: threading.Thread(target=engine.restart, daemon=True).start(),
             ),
             pystray.Menu.SEPARATOR,
+            pystray.MenuItem(
+                "Start with Windows",
+                lambda: threading.Thread(
+                    target=_toggle_autostart, args=(icon,), daemon=True
+                ).start(),
+                checked=lambda item: autostart_enabled(),
+            ),
             pystray.MenuItem("Quit", lambda: _quit(icon, hotkey, quick)),
         ),
     )
@@ -715,6 +773,20 @@ def main() -> int:
             pass
         engine.stop_if_ours()
     return 0
+
+
+def _toggle_autostart(icon: pystray.Icon) -> None:
+    enabled = set_autostart(not autostart_enabled())
+    try:
+        icon.notify(
+            "G.I.D.E.O.N will start when you log in."
+            if enabled
+            else "G.I.D.E.O.N will no longer start with Windows.",
+            "G.I.D.E.O.N",
+        )
+    except Exception:
+        pass
+    icon.update_menu()
 
 
 def _quit(icon: pystray.Icon, hotkey: HotkeyListener, quick: QuickWindow) -> None:

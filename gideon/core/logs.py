@@ -8,12 +8,22 @@ less launchers (pythonw) need before anything logs.
 from __future__ import annotations
 
 import logging
+import os
 import sys
 from pathlib import Path
 
 from gideon.core.config import LOG_DIR, LOG_LEVEL
 
 _configured = False
+
+
+def _is_real(stream: object) -> bool:
+    """A stream that goes somewhere. pywebview, on import, replaces a None
+    stdout/stderr with a writer to `nul`; that is still a process with no
+    console, and everything written to it is lost."""
+    if stream is None:
+        return False
+    return str(getattr(stream, "name", "")).lower() not in ("nul", os.devnull.lower())
 
 
 def bind_headless_streams(name: str, max_bytes: int = 5 * 1024 * 1024) -> Path | None:
@@ -35,7 +45,7 @@ def bind_headless_streams(name: str, max_bytes: int = 5 * 1024 * 1024) -> Path |
     Returns None when real streams already exist, so running from a console
     behaves exactly as before.
     """
-    if sys.stdout is not None and sys.stderr is not None:
+    if _is_real(sys.stdout) and _is_real(sys.stderr):
         return None
 
     LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -53,6 +63,12 @@ def bind_headless_streams(name: str, max_bytes: int = 5 * 1024 * 1024) -> Path |
     handle = open(path, "a", encoding="utf-8", buffering=1)  # noqa: SIM115
     sys.stdout = handle
     sys.stderr = handle
+    # A handler created before this call captured the old (dead) stream.
+    for handler in logging.getLogger().handlers:
+        if isinstance(handler, logging.StreamHandler) and not isinstance(
+            handler, logging.FileHandler
+        ) and not _is_real(handler.stream):
+            handler.setStream(handle)
     return path
 
 

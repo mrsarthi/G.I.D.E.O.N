@@ -205,7 +205,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const camera = new THREE.PerspectiveCamera(38, W / H, 0.1, 1000);
     camera.position.set(0, 0.1, 4.5);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    // low-power: on a dual-GPU laptop the browser renders on the integrated
+    // GPU, leaving the GTX's VRAM and power budget to the model.
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'low-power' });
     renderer.setSize(W, H);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setClearColor(0x000000, 0);
@@ -369,9 +371,17 @@ document.addEventListener('DOMContentLoaded', () => {
     // ═══════════════════════════════════════════════════════════
     const threeClock = new THREE.Clock();
 
+    // On battery the hologram drops to ~12 fps: this laptop powers off if the
+    // GPU draws too much, and a 60 fps shader loop is pure decoration.
+    let onBattery = false;
+    let lastFrameAt = 0;
+    const BATTERY_FRAME_SECONDS = 1 / 12;
+
     function animate() {
         requestAnimationFrame(animate);
         const t = threeClock.getElapsedTime();
+        if (onBattery && t - lastFrameAt < BATTERY_FRAME_SECONDS) return;
+        lastFrameAt = t;
 
         // Shader uniforms
         holoMat.uniforms.uTime.value = t;
@@ -445,7 +455,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const res = await fetch('/api/metrics');
             if (!res.ok) throw new Error('API response not OK');
             const data = await res.json();
-            
+            onBattery = !!data.on_battery;
+
             // CPU
             const cpu = Math.round(data.cpu);
             cpuVal.textContent = `${cpu}%`;
@@ -559,7 +570,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const newRes = await fetch('/api/sessions', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name: 'Default G.I.D.E.O.N Session' })
+                    body: JSON.stringify({ name: '' })
                 });
                 const defaultSession = await newRes.json();
                 currentSessionId = defaultSession.session_id;
@@ -640,6 +651,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (historyView) {
                 historyView.scrollTop = historyView.scrollHeight;
             }
+            loadPendingApprovals(sessionId);
         } catch (err) {
             console.error('Failed to load message history:', err);
         }
@@ -671,6 +683,183 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (dot) dot.classList.remove('pulsing');
             }
         }, speed);
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  UI — APPROVALS
+    //  Privileged actions wait here until the user clicks. The model
+    //  cannot approve its own request; only this button can.
+    // ═══════════════════════════════════════════════════════════
+    const approvalStack = document.getElementById('approval-stack');
+    const approvalCards = new Map();   // action_id -> card element
+
+    const STATUS_TITLES = {
+        pending: 'Approval needed',
+        approved: 'Approved — done',
+        failed: 'Approved — failed',
+        denied: 'Denied',
+        expired: 'Expired',
+    };
+
+    function authHeaders() {
+        return { 'Content-Type': 'application/json', 'X-Gideon-Token': window.GIDEON_API_TOKEN || '' };
+    }
+
+    function renderApproval(action) {
+        if (!approvalStack || !action || action.action_id == null) return;
+
+        let card = approvalCards.get(action.action_id);
+        if (!card) {
+            card = document.createElement('div');
+            card.className = 'approval-card';
+            approvalStack.appendChild(card);
+            approvalCards.set(action.action_id, card);
+        }
+        // Built with textContent only: the summary contains model-chosen
+        // arguments, which must never be interpreted as markup.
+        card.innerHTML = '';
+        card.className = 'approval-card' + (action.status === 'pending' ? '' : ` resolved ${action.status}`);
+
+        const title = document.createElement('div');
+        title.className = 'approval-title';
+        title.textContent = `${STATUS_TITLES[action.status] || action.status} · #${action.action_id}`;
+        card.appendChild(title);
+
+        const summary = document.createElement('div');
+        summary.className = 'approval-summary';
+        summary.textContent = action.summary || action.tool;
+        card.appendChild(summary);
+
+        if (action.reason && action.status === 'pending') {
+            const reason = document.createElement('div');
+            reason.className = 'approval-reason';
+            reason.textContent = `Why: ${action.reason}.`;
+            card.appendChild(reason);
+        }
+
+        if (action.result) {
+            const result = document.createElement('div');
+            result.className = 'approval-result';
+            result.textContent = action.result.length > 1500
+                ? action.result.slice(0, 1500) + '\n…'
+                : action.result;
+            card.appendChild(result);
+        }
+
+        const buttons = document.createElement('div');
+        buttons.className = 'approval-actions';
+        if (action.status === 'pending') {
+            const deny = document.createElement('button');
+            deny.textContent = 'Deny';
+            deny.addEventListener('click', () => decideApproval(action.action_id, 'deny', card));
+            const approve = document.createElement('button');
+            approve.className = 'approve';
+            approve.textContent = 'Approve';
+            approve.addEventListener('click', () => decideApproval(action.action_id, 'approve', card));
+            buttons.append(deny, approve);
+        } else {
+            const dismiss = document.createElement('button');
+            dismiss.textContent = 'Dismiss';
+            dismiss.addEventListener('click', () => {
+                card.remove();
+                approvalCards.delete(action.action_id);
+            });
+            buttons.append(dismiss);
+        }
+        card.appendChild(buttons);
+    }
+
+    async function decideApproval(actionId, decision, card) {
+        card.querySelectorAll('button').forEach(b => { b.disabled = true; });
+        try {
+            const res = await fetch(`/api/actions/${actionId}/${decision}`, {
+                method: 'POST',
+                headers: authHeaders(),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                triggerAlert(`G.I.D.E.O.N: ${data.detail || 'Could not update that request.'}`);
+                // Already handled elsewhere (quick window, expiry): reflect it.
+                loadPendingApprovals(currentSessionId, true);
+                return;
+            }
+            renderApproval(data);
+            triggerAlert(decision === 'approve'
+                ? `G.I.D.E.O.N: Approved #${actionId}.`
+                : `G.I.D.E.O.N: Denied #${actionId}.`);
+            if (currentSessionId) loadHistory(currentSessionId);
+        } catch (err) {
+            console.error('Approval request failed:', err);
+            card.querySelectorAll('button').forEach(b => { b.disabled = false; });
+        }
+    }
+
+    async function loadPendingApprovals(sessionId, pruneResolved = false) {
+        if (!sessionId) return;
+        try {
+            const res = await fetch(`/api/actions?session_id=${encodeURIComponent(sessionId)}`, {
+                headers: authHeaders(),
+            });
+            if (!res.ok) return;
+            const pending = await res.json();
+            const pendingIds = new Set(pending.map(a => a.action_id));
+            if (pruneResolved) {
+                for (const [id, card] of approvalCards) {
+                    if (!pendingIds.has(id) && !card.classList.contains('resolved')) {
+                        card.remove();
+                        approvalCards.delete(id);
+                    }
+                }
+            }
+            pending.forEach(renderApproval);
+        } catch (err) {
+            console.error('Failed to load pending approvals:', err);
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  UI — REPLY FEEDBACK
+    //  👍/👎 on the last reply, stored on that turn's trace — the
+    //  correction signal the eval set and future training are built from.
+    // ═══════════════════════════════════════════════════════════
+    const replyFeedback = document.getElementById('reply-feedback');
+    let lastTraceId = null;
+
+    function showFeedback(traceId) {
+        lastTraceId = traceId;
+        if (!replyFeedback) return;
+        replyFeedback.querySelectorAll('button').forEach(b => {
+            b.disabled = false;
+            b.classList.remove('chosen');
+        });
+        replyFeedback.classList.toggle('hidden', !traceId);
+    }
+
+    if (replyFeedback) {
+        replyFeedback.querySelectorAll('button').forEach(button => {
+            button.addEventListener('click', async () => {
+                if (!lastTraceId) return;
+                const rating = Number(button.dataset.rating);
+                let note = null;
+                if (rating < 0) {
+                    note = prompt("What was wrong? (optional — helps G.I.D.E.O.N improve)");
+                    if (note === null) return; // cancelled
+                }
+                try {
+                    const res = await fetch(`/api/traces/${lastTraceId}/feedback`, {
+                        method: 'POST',
+                        headers: authHeaders(),
+                        body: JSON.stringify({ rating, note: note || null }),
+                    });
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                    replyFeedback.querySelectorAll('button').forEach(b => { b.disabled = true; });
+                    button.classList.add('chosen');
+                    triggerAlert("G.I.D.E.O.N: Feedback recorded.");
+                } catch (err) {
+                    console.error('Feedback failed:', err);
+                }
+            });
+        });
     }
 
     async function handleChatSend() {
@@ -711,6 +900,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         stopAndClearAudio();
+        showFeedback(null);
+        let turnTraceId = null;
         try {
             const res = await fetch('/api/chat', {
                 method: 'POST',
@@ -765,6 +956,13 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (parsed.audio_url) {
                             enqueueAudio(parsed.audio_url);
                         }
+                        if (parsed.trace_id) {
+                            turnTraceId = parsed.trace_id;
+                        }
+                        if (parsed.approval) {
+                            renderApproval(parsed.approval);
+                            triggerAlert("G.I.D.E.O.N: An action is waiting for your approval.");
+                        }
                         if (parsed.open_url) {
                             window.open(parsed.open_url, '_blank');
                         }
@@ -784,6 +982,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             
             if (dot) dot.classList.remove('pulsing');
+            showFeedback(turnTraceId);
             loadHistory(currentSessionId);
             triggerAlert("G.I.D.E.O.N: Core response received.");
             
@@ -827,10 +1026,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const newSessionBtnHeader = document.getElementById('new-session-btn-header');
 
     async function handleNewSession() {
-        const name = prompt("Enter a name for the new session:");
+        const name = prompt("Name the new session (leave blank and G.I.D.E.O.N will title it):");
         if (name === null) return; // User cancelled
-        const sName = name.trim() ? name.trim() : `Session ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
-        
+        // Blank asks the server to title it after the first exchange.
+        const sName = name.trim();
+
         try {
             const res = await fetch('/api/sessions', {
                 method: 'POST',
@@ -945,9 +1145,28 @@ document.addEventListener('DOMContentLoaded', () => {
                         const hud = document.getElementById('hud-text');
                         if (hud) hud.textContent = alertMsg;
                         if (data.audio_url) enqueueAudio(data.audio_url);
+                    } else if (data.type === 'reminder_digest') {
+                        const digestMsg = `🔔 ${data.message}: ` +
+                            (data.items || []).map(i => i.text).join(' · ');
+                        triggerAlert(`🔔 ${data.message}`);
+                        triggerReaction(2000);
+                        const hud = document.getElementById('hud-text');
+                        if (hud) hud.textContent = digestMsg;
+                        if (data.audio_url) enqueueAudio(data.audio_url);
                     } else if (data.type === 'terminal') {
                         toggleTerminalDrawer(true);
                         appendTerminalOutput(data.command, data.output, data.returncode);
+                    } else if (data.type === 'action_resolved') {
+                        // Resolved here or in the quick window: keep cards in step.
+                        if (approvalCards.has(data.action_id)) renderApproval(data);
+                    } else if (data.type === 'power_changed') {
+                        onBattery = !!data.on_battery;
+                        const mode = { cpu: 'model moved to CPU', off: 'model paused', gpu: 'model unchanged' };
+                        triggerAlert(data.on_battery
+                            ? `G.I.D.E.O.N: On battery — ${mode[data.battery_mode] || 'power saving'}.`
+                            : 'G.I.D.E.O.N: On mains power — GPU available.');
+                    } else if (data.type === 'session_renamed') {
+                        loadSessions(currentSessionId);
                     }
                 } catch (e) {
                     console.error("Failed to parse proactive SSE event:", e);

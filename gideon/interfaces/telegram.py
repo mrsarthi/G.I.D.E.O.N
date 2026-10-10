@@ -32,6 +32,37 @@ log = get_logger("gideon.telegram")
 
 # Telegram rejects messages over 4096 characters.
 _CHUNK = 4000
+# Seconds between edits of a reply that is still being written. Telegram
+# throttles a bot that edits one chat much faster than about once a second.
+_EDIT_INTERVAL = 1.2
+_NO_OUTPUT = "I processed your request, but produced no textual output."
+
+
+class _StreamedReply:
+    """A reply that grows in place: sent on the first words, then edited.
+
+    Text past Telegram's length limit continues in a new message, so a long
+    answer streams across several bubbles instead of failing at the end.
+    """
+
+    def __init__(self, message: Any) -> None:
+        self._origin = message
+        self._sent: list[Any] = []
+        self._shown: list[str] = []
+
+    async def show(self, text: str) -> None:
+        chunks = [text[i : i + _CHUNK] for i in range(0, len(text), _CHUNK)] or [""]
+        for index, chunk in enumerate(chunks):
+            if not chunk.strip():
+                continue
+            if index < len(self._sent):
+                if self._shown[index] != chunk:
+                    # Editing to identical text is an API error; skip it.
+                    await self._sent[index].edit_text(chunk)
+                    self._shown[index] = chunk
+            else:
+                self._sent.append(await self._origin.reply_text(chunk))
+                self._shown.append(chunk)
 
 
 class GideonTelegramDaemon:
@@ -111,22 +142,46 @@ class GideonTelegramDaemon:
         try:
             self.agent.db.ensure_session(session_id, f"Telegram Chat {chat_id}")
             self.agent.record_user_message(session_id, user_text)
-            # respond() blocks for the whole generation (several seconds).
-            # Called directly it would stall the shared event loop, freezing
-            # SSE streams, the reminder daemon and the web UI.
-            response_text = await asyncio.to_thread(
-                self.agent.respond, session_id, user_text, "telegram"
-            )
-
-            if not response_text:
-                response_text = "I processed your request, but produced no textual output."
-
-            for chunk_idx in range(0, len(response_text), _CHUNK):
-                await update.message.reply_text(response_text[chunk_idx : chunk_idx + _CHUNK])
-
+            await self._stream_reply(update.message, session_id, user_text)
         except Exception as err:
             log.error("Error processing Telegram message from %s: %s", chat_id, err, exc_info=True)
             await update.message.reply_text(f"An error occurred while processing your request: {err}")
+
+    async def _stream_reply(self, message: Any, session_id: str, user_text: str) -> None:
+        """Generate on a worker thread and edit the reply in as it arrives.
+
+        The agent loop blocks for the whole generation (several seconds);
+        run on the event loop it would freeze SSE streams, the reminder
+        daemon and the web UI. Tokens cross back to the loop through a queue.
+        """
+        agent = self.agent
+        assert agent is not None
+        loop = asyncio.get_running_loop()
+        tokens: asyncio.Queue[str | None] = asyncio.Queue()
+
+        def produce() -> None:
+            try:
+                for token in agent.stream(session_id, user_text, "telegram"):
+                    loop.call_soon_threadsafe(tokens.put_nowait, token)
+            finally:
+                loop.call_soon_threadsafe(tokens.put_nowait, None)
+
+        producer = loop.run_in_executor(None, produce)
+        reply = _StreamedReply(message)
+        text, last_edit = "", 0.0
+        try:
+            while (token := await tokens.get()) is not None:
+                text += token
+                if text.strip() and loop.time() - last_edit >= _EDIT_INTERVAL:
+                    try:
+                        await reply.show(text)
+                    except Exception as exc:
+                        # Interim edits are cosmetic; the final one below is not.
+                        log.debug("Interim Telegram edit failed: %s", exc)
+                    last_edit = loop.time()
+        finally:
+            await producer
+        await reply.show(text if text.strip() else _NO_OUTPUT)
 
     async def start(self) -> None:
         if not self.is_configured():

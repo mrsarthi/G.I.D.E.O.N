@@ -20,7 +20,7 @@ from fastapi.responses import JSONResponse
 from gideon.app import Services
 from gideon.core.config import ALLOWED_HOSTS, CORS_ORIGINS
 from gideon.core.logs import get_logger
-from gideon.interfaces.api.routes import chat, sessions, system
+from gideon.interfaces.api.routes import actions, chat, sessions, system, traces
 from gideon.interfaces.api.routes.pages import mount_pages
 
 log = get_logger("gideon.api")
@@ -65,6 +65,8 @@ def create_app(services: Services | None = None) -> FastAPI:
     app.include_router(system.router)
     app.include_router(sessions.router)
     app.include_router(chat.router)
+    app.include_router(actions.router)
+    app.include_router(traces.router)
     mount_pages(app)
     return app
 

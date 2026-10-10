@@ -41,6 +41,7 @@ def _fetch_item(item_id: int) -> dict[str, Any] | None:
         default="top",
     ),
     Param("limit", "Number of stories (1-10, default 5).", type="integer", default=5),
+    untrusted_output=True,
     triggers={"hackernews", "hn", "headlines", "story", "stories", "article", "news"},
 )
 def get_hackernews(category: str = "top", limit: int = 5) -> str:

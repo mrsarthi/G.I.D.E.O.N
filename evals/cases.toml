@@ -1,0 +1,678 @@
+# G.I.D.E.O.N eval set — real-model behaviour, not unit tests.
+#
+# Each case is one user message sent to a fresh session. Tools never really
+# run: the runner records the call and returns a canned result.
+#
+#   tool  = "name"           the first tool call must be this tool
+#   tools = ["a", "b"]       ...or any of these
+#   tool  = "none"           no tool may be called
+#   args  = { slot = "x" }   that slot must contain "x" (case-insensitive)
+#   ask   = true             Gideon must ask a question instead of acting
+#   forbid = ["tool"]        ...and must not call these meanwhile
+#   history = [ { role = "user", content = "..." }, ... ]   prior turns
+#
+# Categories: tool (pick the right tool), slots (fill it correctly), chat
+# (no tool), clarify (never-assume, PRD §5.5), media (play vs. press play).
+#
+# Grow this file from real traces: every 👎 or correction is a candidate case.
+
+# ---------------------------------------------------------------------------
+#  System status
+# ---------------------------------------------------------------------------
+[[case]]
+id = "status-gpu"
+prompt = "How hot is my GPU running right now?"
+tool = "get_system_status"
+category = "tool"
+
+[[case]]
+id = "status-ram"
+prompt = "check my ram usage"
+tool = "get_system_status"
+category = "tool"
+
+[[case]]
+id = "status-battery"
+prompt = "what's my battery at?"
+tool = "get_system_status"
+category = "tool"
+
+[[case]]
+id = "status-general"
+prompt = "run a quick diagnostic on the system"
+tool = "get_system_status"
+category = "tool"
+
+# ---------------------------------------------------------------------------
+#  Reminders
+# ---------------------------------------------------------------------------
+[[case]]
+id = "reminder-relative"
+prompt = "Remind me to drink water in 30 minutes"
+tool = "set_reminder"
+args = { text = "water", time_str = "30" }
+category = "slots"
+
+[[case]]
+id = "reminder-tomorrow"
+prompt = "set a reminder for tomorrow at 9am to call the bank"
+tool = "set_reminder"
+args = { text = "bank", time_str = "tomorrow" }
+category = "slots"
+
+[[case]]
+id = "reminder-weekday"
+prompt = "remind me on friday to submit the assignment"
+tool = "set_reminder"
+args = { text = "assignment", time_str = "friday" }
+category = "slots"
+
+[[case]]
+id = "reminder-hours"
+prompt = "In 2 hours remind me to take the clothes out of the washer"
+tool = "set_reminder"
+args = { text = "clothes", time_str = "2" }
+category = "slots"
+
+[[case]]
+id = "reminder-list"
+prompt = "what reminders do I have?"
+tool = "list_reminders"
+category = "tool"
+
+[[case]]
+id = "reminder-list-2"
+prompt = "show me my upcoming reminders"
+tool = "list_reminders"
+category = "tool"
+
+# ---------------------------------------------------------------------------
+#  Notes & tasks
+# ---------------------------------------------------------------------------
+[[case]]
+id = "task-add"
+prompt = "add buy milk to my to-do list"
+tool = "save_note"
+args = { text = "milk", kind = "task" }
+category = "slots"
+
+[[case]]
+id = "task-add-2"
+prompt = "put 'renew passport' on my tasks"
+tool = "save_note"
+args = { text = "passport" }
+category = "slots"
+
+[[case]]
+id = "note-save"
+prompt = "make a note that the wifi password is on the router sticker"
+tool = "save_note"
+args = { text = "router" }
+category = "slots"
+
+[[case]]
+id = "note-jot"
+prompt = "jot down: dentist's number is in my email"
+tool = "save_note"
+args = { text = "dentist" }
+category = "slots"
+
+[[case]]
+id = "task-list"
+prompt = "what's on my to-do list?"
+tool = "list_notes"
+category = "tool"
+
+[[case]]
+id = "note-search"
+prompt = "do I have any notes about the wifi?"
+tool = "list_notes"
+args = { query = "wifi" }
+category = "slots"
+
+[[case]]
+id = "task-complete"
+prompt = "mark task 3 as done"
+tool = "complete_task"
+args = { task_id = "3" }
+category = "slots"
+
+# ---------------------------------------------------------------------------
+#  Apps & files
+# ---------------------------------------------------------------------------
+[[case]]
+id = "launch-notepad"
+prompt = "open notepad"
+tool = "launch_app"
+args = { app_name = "notepad" }
+category = "slots"
+
+[[case]]
+id = "launch-vscode"
+prompt = "launch vs code for me"
+tool = "launch_app"
+args = { app_name = "code" }
+category = "slots"
+
+[[case]]
+id = "launch-calc"
+prompt = "Can you start the calculator?"
+tool = "launch_app"
+args = { app_name = "calc" }
+category = "slots"
+
+[[case]]
+id = "launch-excel"
+prompt = "open excel"
+tool = "launch_app"
+args = { app_name = "excel" }
+category = "slots"
+
+[[case]]
+id = "files-find"
+prompt = "find the file called budget.xlsx"
+tool = "search_files"
+args = { file_name_or_extension = "budget" }
+category = "slots"
+
+[[case]]
+id = "files-ext"
+prompt = "search my computer for pdf files"
+tool = "search_files"
+args = { file_name_or_extension = "pdf" }
+category = "slots"
+
+[[case]]
+id = "doc-read"
+prompt = "read the document report.pdf on my desktop and summarize it"
+tool = "read_document"
+args = { file_path = "report" }
+category = "slots"
+
+[[case]]
+id = "doc-read-2"
+prompt = "open notes.txt and tell me what's in it"
+tool = "read_document"
+args = { file_path = "notes.txt" }
+category = "slots"
+
+# ---------------------------------------------------------------------------
+#  Web & information
+# ---------------------------------------------------------------------------
+[[case]]
+id = "web-news"
+prompt = "search the web for the latest news on the Mars sample return mission"
+tool = "search_web"
+args = { query = "mars" }
+category = "slots"
+
+[[case]]
+id = "web-lookup"
+prompt = "look up who won the last F1 race"
+tool = "search_web"
+args = { query = "f1" }
+category = "slots"
+
+[[case]]
+id = "web-online"
+prompt = "can you check online when the next iPhone launches?"
+tool = "search_web"
+args = { query = "iphone" }
+category = "slots"
+
+[[case]]
+id = "weather-city"
+prompt = "what's the weather like in Tokyo?"
+tool = "get_weather"
+args = { location = "tokyo" }
+category = "slots"
+
+[[case]]
+id = "weather-here"
+prompt = "is it going to rain today?"
+tool = "get_weather"
+category = "tool"
+
+[[case]]
+id = "weather-forecast"
+prompt = "give me the forecast for Mumbai"
+tool = "get_weather"
+args = { location = "mumbai" }
+category = "slots"
+
+[[case]]
+id = "weather-temp"
+prompt = "how cold is it in London right now"
+tool = "get_weather"
+args = { location = "london" }
+category = "slots"
+
+[[case]]
+id = "finance-stock"
+prompt = "what's Apple's stock price?"
+tool = "get_financial_data"
+args = { symbol = "aapl" }
+category = "slots"
+
+[[case]]
+id = "finance-crypto"
+prompt = "how is bitcoin doing today"
+tool = "get_financial_data"
+args = { symbol = "btc" }
+category = "slots"
+
+[[case]]
+id = "finance-news"
+prompt = "any news on Nvidia stock?"
+tool = "get_financial_data"
+args = { symbol = "nvda" }
+category = "slots"
+
+[[case]]
+id = "hn-top"
+prompt = "what's trending on hacker news?"
+tool = "get_hackernews"
+category = "tool"
+
+[[case]]
+id = "hn-ask"
+prompt = "show me the top Ask HN posts"
+tool = "get_hackernews"
+args = { category = "ask" }
+category = "slots"
+
+[[case]]
+id = "ip-mine"
+prompt = "what's my public IP address?"
+tool = "get_ip_info"
+category = "tool"
+
+[[case]]
+id = "ip-lookup"
+prompt = "look up the location of IP 8.8.8.8"
+tool = "get_ip_info"
+args = { ip_address = "8.8.8.8" }
+category = "slots"
+
+[[case]]
+id = "wolfram-distance"
+prompt = "how far is the moon from earth?"
+tools = ["query_wolfram_alpha", "search_web"]
+category = "tool"
+
+[[case]]
+id = "wolfram-math"
+prompt = "calculate 4589 times 371"
+tools = ["query_wolfram_alpha"]
+args = { query = "4589" }
+category = "slots"
+
+[[case]]
+id = "wolfram-convert"
+prompt = "convert 72 fahrenheit to celsius"
+tools = ["query_wolfram_alpha"]
+args = { query = "72" }
+category = "slots"
+
+# ---------------------------------------------------------------------------
+#  Clipboard, volume, terminal
+# ---------------------------------------------------------------------------
+[[case]]
+id = "clip-read"
+prompt = "what's on my clipboard?"
+tool = "get_clipboard"
+category = "tool"
+
+[[case]]
+id = "clip-review"
+prompt = "review the code I just copied"
+tool = "get_clipboard"
+category = "tool"
+
+[[case]]
+id = "clip-write"
+prompt = "copy 'see you at 5' to my clipboard"
+tool = "set_clipboard"
+args = { text = "see you at 5" }
+category = "slots"
+
+[[case]]
+id = "volume-set"
+prompt = "set the volume to 30 percent"
+tool = "control_volume"
+args = { action = "set", level = "30" }
+category = "slots"
+
+[[case]]
+id = "volume-mute"
+prompt = "mute the sound"
+tool = "control_volume"
+args = { action = "mute" }
+category = "slots"
+
+[[case]]
+id = "volume-status"
+prompt = "what's the volume at?"
+tool = "control_volume"
+args = { action = "status" }
+category = "slots"
+
+[[case]]
+id = "shell-git"
+prompt = "run git status in the terminal"
+tool = "run_terminal_command"
+args = { command = "git status" }
+category = "slots"
+
+[[case]]
+id = "shell-pip"
+prompt = "execute pip list"
+tool = "run_terminal_command"
+args = { command = "pip list" }
+category = "slots"
+
+[[case]]
+id = "shell-dir"
+prompt = "list the files in the current folder using the command line"
+tool = "run_terminal_command"
+args = { command = "dir" }
+category = "slots"
+
+# ---------------------------------------------------------------------------
+#  Media: play a song vs. press play
+# ---------------------------------------------------------------------------
+[[case]]
+id = "media-play-song"
+prompt = "play Loser by Tame Impala"
+tool = "play_youtube_music"
+args = { query = "loser" }
+category = "media"
+
+[[case]]
+id = "media-play-artist"
+prompt = "put on some Arctic Monkeys"
+tool = "play_youtube_music"
+args = { query = "arctic monkeys" }
+category = "media"
+
+[[case]]
+id = "media-play-yt"
+prompt = "play Starboy on youtube music"
+tool = "play_youtube_music"
+args = { query = "starboy" }
+category = "media"
+
+[[case]]
+id = "media-pause"
+prompt = "pause the music"
+tool = "control_media"
+args = { action = "play_pause" }
+category = "media"
+
+[[case]]
+id = "media-next"
+prompt = "skip to the next track"
+tool = "control_media"
+args = { action = "next" }
+category = "media"
+
+[[case]]
+id = "media-resume"
+prompt = "resume playback"
+tool = "control_media"
+args = { action = "play_pause" }
+category = "media"
+
+[[case]]
+id = "media-search"
+prompt = "search youtube music for lo-fi study playlists"
+tool = "search_youtube_music"
+args = { query = "lo-fi" }
+category = "media"
+
+# ---------------------------------------------------------------------------
+#  Chat: no tool should be called
+# ---------------------------------------------------------------------------
+[[case]]
+id = "chat-hi"
+prompt = "hi"
+tool = "none"
+category = "chat"
+
+[[case]]
+id = "chat-thanks"
+prompt = "thanks, that's all for now"
+tool = "none"
+category = "chat"
+
+[[case]]
+id = "chat-thanks-short"
+prompt = "say thanks in one short sentence"
+tool = "none"
+category = "chat"
+
+[[case]]
+id = "chat-explain"
+prompt = "explain what a hash map is in two sentences"
+tool = "none"
+category = "chat"
+
+[[case]]
+id = "chat-joke"
+prompt = "tell me a joke"
+tool = "none"
+category = "chat"
+
+[[case]]
+id = "chat-time"
+prompt = "what time is it?"
+tool = "none"
+category = "chat"
+
+[[case]]
+id = "chat-date"
+prompt = "what's today's date?"
+tool = "none"
+category = "chat"
+
+[[case]]
+id = "chat-advice"
+prompt = "how should I structure a cover letter?"
+tool = "none"
+category = "chat"
+
+[[case]]
+id = "chat-concept-weather"
+prompt = "why is the sky blue?"
+tool = "none"
+category = "chat"
+
+[[case]]
+id = "chat-concept-files"
+prompt = "what's the difference between a file and a folder?"
+tool = "none"
+category = "chat"
+
+[[case]]
+id = "chat-concept-music"
+prompt = "what makes a song catchy?"
+tool = "none"
+category = "chat"
+
+[[case]]
+id = "chat-concept-stocks"
+prompt = "in simple terms, what is a stock?"
+tool = "none"
+category = "chat"
+
+[[case]]
+id = "chat-summary"
+prompt = "summarize that in one line"
+tool = "none"
+category = "chat"
+history = [
+  { role = "user", content = "What is photosynthesis?" },
+  { role = "assistant", content = "Photosynthesis is the process plants use to turn sunlight, water and carbon dioxide into glucose and oxygen, using chlorophyll in their leaves." },
+]
+
+[[case]]
+id = "chat-name"
+prompt = "who are you?"
+tool = "none"
+category = "chat"
+
+[[case]]
+id = "chat-feelings"
+prompt = "I'm feeling a bit stressed today"
+tool = "none"
+category = "chat"
+
+# ---------------------------------------------------------------------------
+#  Clarify: a required detail is missing — ask, don't guess (PRD §5.5)
+# ---------------------------------------------------------------------------
+[[case]]
+id = "ask-reminder-time"
+prompt = "remind me to call mom"
+ask = true
+forbid = ["set_reminder"]
+category = "clarify"
+
+[[case]]
+id = "ask-reminder-what"
+prompt = "set a reminder for 6pm"
+ask = true
+forbid = ["set_reminder"]
+category = "clarify"
+
+[[case]]
+id = "ask-launch-what"
+prompt = "open the app"
+ask = true
+forbid = ["launch_app"]
+category = "clarify"
+
+[[case]]
+id = "ask-read-which"
+prompt = "read the document"
+ask = true
+forbid = ["read_document"]
+category = "clarify"
+
+[[case]]
+id = "ask-play-what"
+prompt = "play that song I like"
+ask = true
+forbid = ["play_youtube_music"]
+category = "clarify"
+
+[[case]]
+id = "ask-stock-which"
+prompt = "what's the stock price?"
+ask = true
+forbid = ["get_financial_data"]
+category = "clarify"
+
+[[case]]
+id = "ask-copy-what"
+prompt = "copy that to my clipboard"
+ask = true
+forbid = ["set_clipboard"]
+category = "clarify"
+
+[[case]]
+id = "ask-search-what"
+prompt = "find the file"
+ask = true
+forbid = ["search_files"]
+category = "clarify"
+
+[[case]]
+id = "ask-complete-which"
+prompt = "mark my task as done"
+ask = true
+forbid = ["complete_task"]
+category = "clarify"
+
+[[case]]
+id = "ask-run-what"
+prompt = "run the command"
+ask = true
+forbid = ["run_terminal_command"]
+category = "clarify"
+
+# ---------------------------------------------------------------------------
+#  Tricky phrasing
+# ---------------------------------------------------------------------------
+[[case]]
+id = "tricky-where-am-i"
+prompt = "where am I right now?"
+tool = "get_ip_info"
+category = "tool"
+
+[[case]]
+id = "tricky-what-copied"
+prompt = "can you see what I copied?"
+tool = "get_clipboard"
+category = "tool"
+
+[[case]]
+id = "tricky-turn-up"
+prompt = "turn it up to 80"
+tool = "control_volume"
+args = { level = "80" }
+category = "slots"
+
+[[case]]
+id = "tricky-temp-not-weather"
+prompt = "what's the temperature of my CPU?"
+tool = "get_system_status"
+category = "tool"
+
+[[case]]
+id = "tricky-note-not-reminder"
+prompt = "note to self: the car is parked on level 3"
+tool = "save_note"
+args = { text = "level 3" }
+category = "slots"
+
+[[case]]
+id = "tricky-reminders-not-notes"
+prompt = "read me my reminders"
+tool = "list_reminders"
+category = "tool"
+
+[[case]]
+id = "tricky-news-tech"
+prompt = "any interesting tech stories today?"
+tools = ["get_hackernews", "search_web"]
+category = "tool"
+
+[[case]]
+id = "tricky-weather-chat"
+prompt = "I love rainy days, don't you?"
+tool = "none"
+category = "chat"
+
+[[case]]
+id = "tricky-open-up-feelings"
+prompt = "can I open up to you about something?"
+tool = "none"
+category = "chat"
+
+[[case]]
+id = "tricky-run-chat"
+prompt = "I want to start running in the mornings, any tips?"
+tool = "none"
+category = "chat"
+
+[[case]]
+id = "tricky-copy-chat"
+prompt = "how do I copy files on Windows?"
+tool = "none"
+category = "chat"
+
+[[case]]
+id = "tricky-play-chat"
+prompt = "what's a good play to watch in London?"
+tools = ["none", "search_web"]
+category = "chat"

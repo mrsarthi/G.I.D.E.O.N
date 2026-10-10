@@ -128,3 +128,94 @@
     opacity: 1;
     pointer-events: auto;
 }
+
+/* ── Approval cards ─────────────────────────────────────────────
+   Privileged actions (shell, app launch after reading outside
+   content) wait here for an explicit click. Stacked bottom-right so
+   they never cover the hologram or the reply text. */
+.approval-stack {
+    position: fixed;
+    right: 24px;
+    bottom: 24px;
+    z-index: 120;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: min(420px, calc(100vw - 48px));
+}
+.approval-card {
+    background: rgba(5, 5, 8, 0.92);
+    border: 1px solid rgba(255, 184, 0, 0.45);
+    border-radius: 12px;
+    padding: 14px 16px;
+    backdrop-filter: blur(20px);
+    box-shadow: 0 0 24px rgba(255, 184, 0, 0.12);
+    color: var(--text-main);
+    font-size: 13px;
+}
+.approval-card.resolved { border-color: rgba(0, 242, 255, 0.25); box-shadow: none; }
+.approval-card.denied, .approval-card.failed { border-color: rgba(255, 45, 85, 0.45); }
+.approval-title {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #ffb800;
+    margin-bottom: 8px;
+}
+.approval-card.resolved .approval-title { color: var(--primary-fixed); }
+.approval-card.denied .approval-title, .approval-card.failed .approval-title { color: #ff2d55; }
+.approval-summary {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12px;
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 6px;
+    padding: 8px 10px;
+    word-break: break-all;
+    white-space: pre-wrap;
+}
+.approval-reason { color: var(--text-muted); font-size: 12px; margin-top: 8px; }
+.approval-result {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    color: var(--text-variant);
+    margin-top: 8px;
+    max-height: 140px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.approval-actions { display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end; }
+.approval-actions button {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 6px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    border: 1px solid rgba(0, 242, 255, 0.3);
+    background: transparent;
+    color: var(--text-main);
+}
+.approval-actions button.approve { background: rgba(0, 242, 255, 0.12); color: var(--primary-fixed); }
+.approval-actions button:hover { background: rgba(0, 242, 255, 0.2); }
+.approval-actions button:disabled { opacity: 0.4; cursor: default; }
+
+/* ── Reply feedback ─────────────────────────────────────────── */
+.reply-feedback { display: flex; gap: 6px; justify-content: flex-end; margin-top: 6px; }
+.reply-feedback.hidden { display: none; }
+.reply-feedback button {
+    font-size: 13px;
+    line-height: 1;
+    padding: 3px 8px;
+    border-radius: 6px;
+    border: 1px solid rgba(0, 242, 255, 0.15);
+    background: transparent;
+    cursor: pointer;
+    opacity: 0.55;
+    transition: opacity 0.2s, background 0.2s;
+}
+.reply-feedback button:hover { opacity: 1; background: rgba(0, 242, 255, 0.08); }
+.reply-feedback button.chosen { opacity: 1; background: rgba(0, 242, 255, 0.15); }
+.reply-feedback button:disabled { cursor: default; }

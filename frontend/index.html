@@ -86,6 +86,9 @@
     <!-- Alert Popup for Interactions -->
     <div class="alert-popup" id="alert-popup">G.I.D.E.O.N: Interface active. Model connection pending.</div>
 
+    <!-- Privileged actions waiting for the user (see renderApproval in app.js) -->
+    <div class="approval-stack" id="approval-stack" aria-live="polite"></div>
+
     <!-- Immersive Background Layer -->
     <div class="fixed inset-0 pointer-events-none z-10 bg-gradient-to-b from-transparent via-obsidian-base/10 to-obsidian-base/60"></div>
 
@@ -255,6 +258,11 @@
                 </div>
                 <div id="hud-text" class="text-sm text-on-surface/90 leading-relaxed font-light tracking-wide mx-auto overflow-y-auto max-h-[80px] no-scrollbar">
                     Initialize link by engaging G.I.D.E.O.N below...
+                </div>
+                <!-- Feedback on the last reply; recorded on its trace (PRD §6.3). -->
+                <div id="reply-feedback" class="reply-feedback hidden">
+                    <button type="button" data-rating="1" title="Good answer">👍</button>
+                    <button type="button" data-rating="-1" title="Wrong or unhelpful">👎</button>
                 </div>
             </div>
         </div>

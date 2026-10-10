@@ -216,6 +216,7 @@ def _resolve_document(raw_path: str) -> Path | None:
         required=True,
         aliases=("path", "file"),
     ),
+    untrusted_output=True,
     triggers={"read", "document", "pdf"},
 )
 def read_document(file_path: str, max_pages: int = 30) -> str:

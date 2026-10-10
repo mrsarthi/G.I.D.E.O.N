@@ -17,6 +17,9 @@ from __future__ import annotations
 import asyncio
 
 from gideon.brain.agent import Agent
+from gideon.brain.approvals import ApprovalQueue
+from gideon.brain.llm import PowerGuard, warm_up
+from gideon.brain.titles import SessionTitler
 from gideon.core.config import QUICK_SESSION_ID
 from gideon.core.events import EventBus, bus
 from gideon.core.logs import get_logger
@@ -45,7 +48,10 @@ class Services:
         self.remote = remote or get_remote_scheduler()
         self.events = events
 
-        self.agent = Agent(self.db, self.memory)
+        self.approvals = ApprovalQueue(self.db, publish=self.events.publish_threadsafe)
+        self.agent = Agent(self.db, self.memory, self.approvals)
+        self.titler = SessionTitler(self.db, publish=self.events.publish_threadsafe)
+        self.power = PowerGuard(publish=self.events.publish_threadsafe)
         self.telegram = GideonTelegramDaemon(agent=self.agent)
         self.reminders = ReminderService(
             self.db,
@@ -77,6 +83,10 @@ class Services:
         self._tasks = [
             asyncio.create_task(self.reminders.run_delivery_loop()),
             asyncio.create_task(self.reminders.run_remote_sync_loop()),
+            # First check runs immediately: booting on battery must not leave
+            # a GPU-resident model in place for even one request.
+            asyncio.create_task(self.power.run()),
+            asyncio.create_task(warm_up()),
         ]
         await self.telegram.start()
         log.info("G.I.D.E.O.N online")
@@ -96,5 +106,6 @@ class Services:
         self.remote.close()
         self.memory.close()
         self.speech.shutdown()
+        self.titler.shutdown()
         close_db()
         log.info("G.I.D.E.O.N offline")

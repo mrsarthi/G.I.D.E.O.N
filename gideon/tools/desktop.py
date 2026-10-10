@@ -4,17 +4,27 @@ G.I.D.E.O.N Desktop & Telemetry Tools
 Application launching is allowlist-only. The previous implementation fell
 through to `subprocess.Popen(f"start {name}", shell=True)` with a name the
 model chose, which is a shell injection with an LLM holding the pen.
+
+The allowlist is KNOWN_APPS plus every shortcut in the Windows Start Menu —
+programs someone deliberately installed — so new apps work without a code
+edit. The model only ever supplies a *name*; what runs is a path this module
+found itself, never text the model wrote.
 """
 
 from __future__ import annotations
 
+import difflib
 import os
+import re
 import shutil
 import subprocess
+import threading
+import time
 from pathlib import Path
 
 import psutil
 
+from gideon.core.config import SEARCH_ROOTS
 from gideon.core.logs import get_logger
 from gideon.tools.base import Param, tool
 
@@ -31,6 +41,7 @@ KNOWN_APPS: dict[str, list[str]] = {
     "paint": ["mspaint.exe"],
     "vscode": ["code.cmd", "code"],
     "code": ["code.cmd", "code"],
+    "vs code": ["code.cmd", "code"],
     "chrome": ["chrome", r"C:\Program Files\Google\Chrome\Application\chrome.exe"],
     "edge": ["msedge", r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"],
     "firefox": ["firefox", r"C:\Program Files\Mozilla Firefox\firefox.exe"],
@@ -46,8 +57,89 @@ KNOWN_APPS: dict[str, list[str]] = {
     "excel": ["excel.exe"],
 }
 
-# Roots search_files is permitted to walk.
-_SEARCH_ROOTS = [Path.cwd(), Path.home() / "Desktop", Path.home() / "Documents"]
+# ---------------------------------------------------------------------------
+#  Start Menu discovery
+# ---------------------------------------------------------------------------
+_START_MENU_DIRS = [
+    Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / r"Microsoft\Windows\Start Menu\Programs",
+    Path(os.environ.get("APPDATA", str(Path.home() / "AppData" / "Roaming")))
+    / r"Microsoft\Windows\Start Menu\Programs",
+]
+# Shortcuts that are not the application itself.
+_NOT_AN_APP = re.compile(
+    r"uninstall|readme|read me|help|documentation|manual|release notes|website|license|"
+    r"changelog|what's new|support",
+    re.IGNORECASE,
+)
+# A friendly name, not a command line: anything else is refused before matching.
+_APP_NAME_OK = re.compile(r"^[\w .+\-']{1,60}$")
+_SHORTCUT_TTL_SECONDS = 600
+
+_shortcuts: dict[str, Path] = {}
+_shortcuts_loaded_at = 0.0
+_shortcuts_lock = threading.Lock()
+
+
+def installed_shortcuts() -> dict[str, Path]:
+    """Start Menu shortcuts by lower-cased name, cached for ten minutes."""
+    global _shortcuts, _shortcuts_loaded_at
+    with _shortcuts_lock:
+        if time.monotonic() - _shortcuts_loaded_at < _SHORTCUT_TTL_SECONDS and _shortcuts:
+            return _shortcuts
+        found: dict[str, Path] = {}
+        for root in _START_MENU_DIRS:
+            if not root.is_dir():
+                continue
+            try:
+                for lnk in root.rglob("*.lnk"):
+                    name = lnk.stem.strip().lower()
+                    if name and not _NOT_AN_APP.search(name):
+                        found.setdefault(name, lnk)
+            except OSError as exc:
+                log.debug("Start Menu scan of %s failed: %s", root, exc)
+        _shortcuts, _shortcuts_loaded_at = found, time.monotonic()
+        log.debug("Indexed %d Start Menu shortcuts", len(found))
+        return found
+
+
+def _match_shortcut(name: str, shortcuts: dict[str, Path]) -> tuple[Path | None, list[str]]:
+    """Exact name, else the shortcuts containing every word of `name`.
+
+    Returns (path, []) on a single match, or (None, candidates) when the name
+    is ambiguous or unknown, so the caller can ask instead of guessing.
+    """
+    if name in shortcuts:
+        return shortcuts[name], []
+    words = name.split()
+    candidates = sorted(
+        (s for s in shortcuts if all(w in s for w in words)), key=len
+    )
+    if len(candidates) == 1:
+        return shortcuts[candidates[0]], []
+    if candidates:
+        # "chrome" -> "google chrome" beats "chrome remote desktop": prefer a
+        # name that ends with the request, when exactly one does.
+        enders = [c for c in candidates if c.endswith(name)]
+        if len(enders) == 1:
+            return shortcuts[enders[0]], []
+        return None, candidates[:5]
+    return None, difflib.get_close_matches(name, list(shortcuts), n=3, cutoff=0.75)
+
+
+def _search_roots() -> list[Path]:
+    """Folders search_files walks: configured, or the usual user folders.
+
+    Not the working directory — that is wherever the engine happened to be
+    started, which made results depend on how G.I.D.E.O.N was launched.
+    """
+    if SEARCH_ROOTS:
+        return [Path(p).expanduser() for p in SEARCH_ROOTS]
+    home = Path.home()
+    folders = ("Desktop", "Documents", "Downloads")
+    # OneDrive folder backup moves Desktop/Documents under OneDrive.
+    candidates = [home / f for f in folders] + [home / "OneDrive" / f for f in folders]
+    return [p for p in candidates if p.is_dir()]
+
 _SKIP_DIRS = {"node_modules", "__pycache__", "venv", ".venv", "AppData", ".git"}
 _MAX_MATCHES = 10
 
@@ -63,20 +155,38 @@ _MAX_MATCHES = 10
     ),
     # Launching programs is local-only: a remote channel never gets it.
     blocked_channels={"telegram"},
-    confirm=True,
+    privileged=True,
     triggers={"open", "launch", "run", "start", "close", "app", "application"},
 )
 def launch_app(app_name: str) -> str:
-    """Start a known desktop application by friendly name."""
-    clean_name = (app_name or "").strip().lower()
+    """Start a built-in or Start Menu application by friendly name."""
+    clean_name = " ".join((app_name or "").strip().lower().split())
     targets = KNOWN_APPS.get(clean_name)
 
     if not targets:
-        available = ", ".join(sorted(set(KNOWN_APPS)))
+        if not _APP_NAME_OK.match(clean_name):
+            log.warning("Refused app name that is not a plain name: %r", app_name)
+            return f"'{app_name}' is not on the approved application list, so I won't launch it."
+
+        shortcut, candidates = _match_shortcut(clean_name, installed_shortcuts())
+        if shortcut is not None:
+            try:
+                # The .lnk path came from the Start Menu scan, not the model.
+                os.startfile(str(shortcut))  # noqa: S606
+                return f"Launched {shortcut.stem} successfully."
+            except OSError as exc:
+                log.warning("Start Menu shortcut %s failed: %s", shortcut, exc)
+                return f"I found {shortcut.stem} in the Start Menu but it failed to start: {exc}"
+
         log.warning("Refused to launch unlisted app: %r", app_name)
+        if candidates:
+            return (
+                f"'{app_name}' is not on the approved application list as written. "
+                f"Did you mean: {', '.join(candidates)}?"
+            )
         return (
             f"'{app_name}' is not on the approved application list, so I won't launch it. "
-            f"I can open: {available}."
+            f"I can open anything in the Start Menu, plus: {', '.join(sorted(set(KNOWN_APPS)))}."
         )
 
     for target in targets:
@@ -183,7 +293,7 @@ def search_files(query: str, search_path: str | None = None) -> str:
     if search_path:
         roots = [Path(search_path).expanduser().resolve()]
     else:
-        roots = [r.resolve() for r in _SEARCH_ROOTS if r.exists()]
+        roots = [r.resolve() for r in _search_roots() if r.exists()]
 
     matches: list[str] = []
     for root in roots:

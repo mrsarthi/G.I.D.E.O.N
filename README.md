@@ -10,10 +10,12 @@ needs to (Telegram, the always-on reminder node, cloud TTS).
 
 - **Talks back.** Replies stream into a 3D HUD and are spoken sentence by
   sentence while the model is still generating.
-- **Does things.** 19 tools: system telemetry, reminders, app launching
-  (allowlist only), file search, web search, clipboard, volume and media keys,
-  YouTube Music, documents, weather, markets, Hacker News, IP lookup, Wolfram
-  Alpha and a guarded terminal.
+- **Does things.** 22 tools: system telemetry, reminders, notes and a to-do
+  list, app launching (Start Menu apps), file search, web search, clipboard,
+  volume and media keys, YouTube Music, documents, weather, markets, Hacker
+  News, IP lookup, Wolfram Alpha and a terminal.
+- **Asks before it acts.** Shell commands — and app launches after it has
+  read a web page or document — wait for you to click Approve.
 - **Is always reachable.** A tray icon and **Ctrl+Alt+G** quick-ask window,
   plus an optional Telegram bot.
 - **Remembers.** Conversations persist in SQLite; relevant past messages are
@@ -41,6 +43,11 @@ starts at boot and the tray at logon:
 powershell -ExecutionPolicy Bypass -File .\install_autostart.ps1
 ```
 
+Without admin, add `-TrayOnly` (or tick **Start with Windows** in the tray
+menu): the tray then starts at logon and brings the engine up itself. Either
+way, G.I.D.E.O.N also appears in the Start Menu, restarts its engine if it
+dies, and preloads the model on mains power so the first question is fast.
+
 Other entry points:
 
 | Command | What it starts |
@@ -62,6 +69,8 @@ you are most likely to want:
 | `GIDEON_TELEGRAM_BOT_TOKEN` / `_ALLOWED_USERS` | — | Enable the Telegram bot (both required) |
 | `GIDEON_REMOTE_SCHEDULER_URL` / `_TOKEN` | — | Always-on reminder node (both required) |
 | `GIDEON_DATA_DIR` | `data/` | Where the database, vector store and logs live |
+| `GIDEON_REQUIRE_CONFIRMATION` | `1` | Shell commands from the model need your approval |
+| `GIDEON_ON_BATTERY` | `cpu` | On battery the model runs CPU-only (`off` pauses it); the GPU is never used unplugged |
 
 See [GIDEON_ARCHITECTURE.md](GIDEON_ARCHITECTURE.md) for the full list.
 
@@ -106,6 +115,21 @@ def get_weather(location: str | None = None) -> str:
 That one declaration produces the schema the model sees, argument
 normalisation, channel policy (`blocked_channels`), the confirmation gate
 (`confirm`) and the words that make tool gating offer it (`triggers`).
+
+## Measuring it
+
+Every conversation turn is traced (what was asked, which tools ran, how long
+each stage took, and your 👍/👎). To measure the model itself:
+
+```powershell
+.venv\Scripts\python.exe -m gideon.evals                                   # current model
+.venv\Scripts\python.exe -m gideon.evals --models llama3.2:latest,qwen2.5:3b-instruct
+.venv\Scripts\python.exe -m gideon.evals --only clarify,media              # a subset
+```
+
+Reports land in `evals/reports/`. Evals use fake tools and a throwaway
+database, so they never open apps or touch your data. Run them plugged in —
+on battery the model is CPU-only and a full run takes hours.
 
 ## Development
 

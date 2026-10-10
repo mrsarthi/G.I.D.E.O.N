@@ -29,6 +29,8 @@ log = get_logger("gideon.tools.finance")
         aliases=("type",),
         default="summary",
     ),
+    # The news data_type returns third-party headlines.
+    untrusted_output=True,
     triggers={
         "stock", "stocks", "share", "shares", "ticker", "quote", "market",
         "markets", "nasdaq", "dow", "crypto", "bitcoin", "btc", "eth",

@@ -95,6 +95,49 @@
     flex: 0 0 auto;
   }
   #echo:empty { display: none; }
+
+  /* Privileged actions wait for a click here; see renderApproval below. */
+  #approvals { flex: 0 0 auto; padding: 0 16px; }
+  #approvals:empty { display: none; }
+  .approval {
+    border: 1px solid #8a6a1a;
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 10px;
+    background: #17140c;
+    font-size: 13px;
+  }
+  .approval.resolved { border-color: var(--edge); background: var(--panel); }
+  .approval .head { font-size: 11px; letter-spacing: .12em; color: #ffb800; margin-bottom: 6px; }
+  .approval.resolved .head { color: var(--muted); }
+  .approval code {
+    display: block;
+    font: 12px/1.45 Consolas, "JetBrains Mono", monospace;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .approval .why { color: var(--muted); font-size: 12px; margin-top: 6px; }
+  .approval .result {
+    font: 11px/1.45 Consolas, monospace;
+    color: var(--muted);
+    margin-top: 6px;
+    max-height: 90px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+  }
+  .approval .buttons { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
+  .approval button {
+    font: 11px "Segoe UI", system-ui, sans-serif;
+    letter-spacing: .08em;
+    padding: 4px 12px;
+    border-radius: 5px;
+    border: 1px solid var(--edge);
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+  }
+  .approval button.approve { border-color: var(--accent); color: var(--accent); }
+  .approval button:disabled { opacity: .4; cursor: default; }
 </style>
 </head>
 <body>
@@ -107,6 +150,7 @@
 
   <textarea id="ask" placeholder="Ask G.I.D.E.O.N…" autofocus spellcheck="false"></textarea>
   <div id="echo"></div>
+  <div id="approvals"></div>
   <div id="out"></div>
 
 <script>
@@ -117,6 +161,7 @@
   const out   = document.getElementById("out");
   const echo  = document.getElementById("echo");
   const dot   = document.getElementById("dot");
+  const approvals = document.getElementById("approvals");
   const SESSION = window.GIDEON_QUICK_SESSION;
   const TOKEN   = window.GIDEON_API_TOKEN || "";
 
@@ -174,6 +219,70 @@
     }
   });
 
+  /* Built with textContent only: the summary holds model-chosen arguments. */
+  function renderApproval(action) {
+    let card = document.getElementById("approval-" + action.action_id);
+    if (!card) {
+      card = document.createElement("div");
+      card.id = "approval-" + action.action_id;
+      approvals.appendChild(card);
+    }
+    const pending = action.status === "pending";
+    card.className = "approval" + (pending ? "" : " resolved");
+    card.textContent = "";
+
+    const head = document.createElement("div");
+    head.className = "head";
+    head.textContent = (pending ? "APPROVAL NEEDED" : action.status.toUpperCase()) + " · #" + action.action_id;
+    const code = document.createElement("code");
+    code.textContent = action.summary || action.tool;
+    card.append(head, code);
+
+    if (pending && action.reason) {
+      const why = document.createElement("div");
+      why.className = "why";
+      why.textContent = "Why: " + action.reason + ".";
+      card.appendChild(why);
+    }
+    if (action.result) {
+      const result = document.createElement("div");
+      result.className = "result";
+      result.textContent = action.result.slice(0, 1200);
+      card.appendChild(result);
+    }
+    if (pending) {
+      const buttons = document.createElement("div");
+      buttons.className = "buttons";
+      const deny = document.createElement("button");
+      deny.textContent = "Deny";
+      const approve = document.createElement("button");
+      approve.className = "approve";
+      approve.textContent = "Approve";
+      deny.addEventListener("click", function () { decide(action.action_id, "deny", card); });
+      approve.addEventListener("click", function () { decide(action.action_id, "approve", card); });
+      buttons.append(deny, approve);
+      card.appendChild(buttons);
+    }
+  }
+
+  async function decide(actionId, decision, card) {
+    card.querySelectorAll("button").forEach(function (b) { b.disabled = true; });
+    try {
+      const res = await fetch("/api/actions/" + actionId + "/" + decision, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Gideon-Token": TOKEN }
+      });
+      const data = await res.json().catch(function () { return {}; });
+      if (!res.ok) throw new Error(data.detail || ("HTTP " + res.status));
+      renderApproval(data);
+    } catch (err) {
+      out.classList.add("error");
+      out.textContent += "\n" + String(err.message || err);
+      card.querySelectorAll("button").forEach(function (b) { b.disabled = false; });
+    }
+    focusInput();
+  }
+
   async function send() {
     const message = ask.value.trim();
     if (!message || inFlight) return;
@@ -181,6 +290,7 @@
     ask.value = "";
     echo.textContent = "› " + message;
     out.textContent = "";
+    approvals.textContent = "";
     out.classList.remove("error");
     dot.classList.remove("err");
     dot.classList.add("busy");
@@ -230,6 +340,9 @@
           if (payload.text) {
             out.textContent += payload.text;
             out.scrollTop = out.scrollHeight;
+          }
+          if (payload.approval) {
+            renderApproval(payload.approval);
           }
           if (payload.error) {
             out.classList.add("error");

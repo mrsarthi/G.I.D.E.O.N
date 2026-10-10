@@ -22,6 +22,7 @@ log = get_logger("gideon.tools.registry")
 _TOOL_MODULES = (
     "desktop",
     "reminders",
+    "notes",
     "web_and_clipboard",
     "media_and_docs",
     "yt_music",
@@ -45,6 +46,9 @@ _SCHEMA_ORDER = (
     "get_system_status",
     "set_reminder",
     "list_reminders",
+    "save_note",
+    "list_notes",
+    "complete_task",
     "launch_app",
     "search_files",
     "search_web",

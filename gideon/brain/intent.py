@@ -45,6 +45,9 @@ _TOOL_INTENT_PHRASES = (
     "what is the distance", "where am i", "where is",
     # Market/weather phrasings with no distinctive keyword.
     "doing today", "going to rain", "going to snow",
+    # Notes and tasks. "to-do" tokenises as "to" + "do", so the tool's own
+    # "todo" trigger never sees it.
+    "to-do", "to do list", "write down", "jot down", "make a note",
 )
 
 

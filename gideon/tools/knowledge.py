@@ -34,6 +34,7 @@ RETRY_DELAY_SECONDS = 0.4
         required=True,
         aliases=("q", "input"),
     ),
+    untrusted_output=True,
     triggers={
         "calculate", "compute", "convert", "solve", "equation", "distance",
         "population", "wolfram",

@@ -114,6 +114,7 @@ def _search_wikipedia(query: str) -> list[str]:
         required=True,
         aliases=("search_query", "q"),
     ),
+    untrusted_output=True,
     triggers={
         "search", "google", "look", "lookup", "browse", "internet", "web",
         "online", "news", "latest", "current",
@@ -144,6 +145,7 @@ def search_web(query: str) -> str:
 @tool(
     "get_clipboard",
     "Read whatever text or code is currently copied to the user's Windows clipboard. Call ONLY when the user asks you to read, analyze, check, or review their clipboard.",
+    untrusted_output=True,
     triggers={"clipboard", "paste", "copied"},
 )
 def get_clipboard() -> str:

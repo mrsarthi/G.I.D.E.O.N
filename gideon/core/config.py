@@ -61,10 +61,10 @@ EMBEDDING_MODEL = _env("GIDEON_EMBED_MODEL", "nomic-embed-text")
 # budget below is what we are allowed to fill with conversation, leaving room
 # for the tool schemas Ollama prepends and for the response itself.
 NUM_CTX = _env_int("GIDEON_NUM_CTX", 8192)
-# Sized for the current 19 tools (~2,240 tokens). brain/prompt.py measures the
+# Sized for the current 22 tools (~2,580 tokens). brain/prompt.py measures the
 # real cost at import and warns if this drifts, so adding tools cannot quietly
 # push the assembled prompt past num_ctx.
-TOOL_SCHEMA_RESERVE = _env_int("GIDEON_TOOL_RESERVE", 2300)
+TOOL_SCHEMA_RESERVE = _env_int("GIDEON_TOOL_RESERVE", 2600)
 RESPONSE_RESERVE = _env_int("GIDEON_RESPONSE_RESERVE", 1024)
 MEMORY_RESERVE = _env_int("GIDEON_MEMORY_RESERVE", 700)
 CHARS_PER_TOKEN = 4
@@ -84,6 +84,22 @@ OLLAMA_OPTIONS = {
 
 EMBED_OPTIONS = {"num_gpu": 0} if EMBED_ON_CPU else {}
 
+# Where the chat model runs on battery (see brain/llm.py). This laptop powers
+# off if the GPU runs the model on battery, so the default keeps it on the CPU:
+#   cpu  CPU only (measured ~17.7 tok/s, 0 MiB VRAM)   off  model paused
+#   gpu  unchanged — only for machines whose battery can supply the GPU
+BATTERY_MODE = _env("GIDEON_ON_BATTERY", "cpu").strip().lower()
+if BATTERY_MODE not in ("cpu", "off", "gpu"):
+    BATTERY_MODE = "cpu"
+# Physical cores: hyperthreads add heat and drain without adding speed here.
+BATTERY_THREADS = _env_int("GIDEON_BATTERY_THREADS", max(1, (os.cpu_count() or 2) // 2))
+# How often the engine checks for being unplugged.
+POWER_POLL_SECONDS = _env_int("GIDEON_POWER_POLL", 5)
+# Load the chat model (and prefill the system prompt) when the engine starts,
+# so the first question after boot does not wait for a cold load. Skipped on
+# battery: there is no point spending the battery on a model nobody asked for.
+WARM_UP_MODEL = _env_flag("GIDEON_WARM_UP", True)
+
 # ---------------------------------------------------------------------------
 #  Memory / retrieval
 # ---------------------------------------------------------------------------
@@ -96,6 +112,9 @@ MEMORY_MIN_CHARS = _env_int("GIDEON_MEMORY_MIN_CHARS", 25)
 MEMORY_SNIPPET_CHARS = _env_int("GIDEON_MEMORY_SNIPPET_CHARS", 600)
 
 HISTORY_MESSAGE_LIMIT = _env_int("GIDEON_HISTORY_LIMIT", 30)
+# Longest tool output fed back to the model (~1,500 tokens). A 20,000-char
+# document dropped into an 8k context pushes the system prompt off the front.
+TOOL_RESULT_MAX_CHARS = _env_int("GIDEON_TOOL_RESULT_MAX_CHARS", 6000)
 MAX_TOOL_TURNS = _env_int("GIDEON_MAX_TOOL_TURNS", 4)
 
 # ---------------------------------------------------------------------------
@@ -127,6 +146,10 @@ DB_PATH = _state_path(_env("GIDEON_DB", "gideon.db"))
 CHROMA_PATH = _state_path("chroma", legacy_name=".chromadb")
 LOG_DIR = _state_path("logs")
 WEBVIEW_DIR = _state_path("webview", legacy_name=".webview")
+
+# Folders the file-search tool may walk, separated by ';'. Empty means
+# Desktop, Documents and Downloads (and their OneDrive-backed versions).
+SEARCH_ROOTS = [p for p in _env("GIDEON_SEARCH_ROOTS", "").split(os.pathsep) if p.strip()]
 
 FRONTEND_DIR = BASE_DIR / "frontend"
 STATIC_DIR = BASE_DIR / "static"
@@ -243,9 +266,14 @@ WOLFRAM_ALPHA_APP_ID = _env("GIDEON_WOLFRAM_APP_ID", "")
 # ---------------------------------------------------------------------------
 #  Safety switches
 # ---------------------------------------------------------------------------
-# Tools declared with confirm=True (see tools/base.py) are refused until the
-# user confirms, when this is on.
-REQUIRE_CONFIRMATION = _env_flag("GIDEON_REQUIRE_CONFIRMATION", False)
+# Tools declared with confirm=True (the shell) wait for the user to approve
+# them in the HUD or quick window before they run. On by default: a web page
+# the model just read must not be able to reach a shell unattended. Tools
+# declared privileged=True (shell, app launching) need approval regardless of
+# this setting once outside content has entered the turn.
+REQUIRE_CONFIRMATION = _env_flag("GIDEON_REQUIRE_CONFIRMATION", True)
+# Unanswered approval requests lapse after this long.
+APPROVAL_TTL_MINUTES = _env_int("GIDEON_APPROVAL_TTL_MINUTES", 15)
 
 # Small models call tools they were never asked to call. Observed: "say thanks
 # in one short sentence" triggered set_clipboard, silently overwriting the

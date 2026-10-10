@@ -86,15 +86,38 @@ def test_launcher_binds_streams_before_importing_uvicorn():
     assert body.index("bind_headless_streams(") < body.index("import uvicorn")
 
 
-def test_tray_binds_streams_before_its_first_logger():
-    """Same trap: the tray's normal launcher is pythonw, so without this it
-    produces no diagnostics at all."""
+def test_tray_launcher_binds_streams_before_importing_anything():
+    """Same trap, plus one more: importing pywebview swaps a missing stdout
+    for a writer to `nul`, after which binding thinks a console exists. The
+    tray therefore produced no log at all until the launcher bound first."""
     source = (
-        __import__("pathlib").Path(__file__).parent.parent / "gideon" / "interfaces" / "tray.py"
-    ).read_text(
-        encoding="utf-8"
-    )
-    assert source.index("bind_headless_streams(") < source.index('get_logger("gideon.tray")')
+        __import__("pathlib").Path(__file__).parent.parent / "gideon_tray.py"
+    ).read_text(encoding="utf-8")
+    assert source.index("bind_headless_streams(") < source.index("from gideon.interfaces.tray")
+
+
+def test_a_nul_stream_counts_as_no_console(tmp_path, monkeypatch):
+    import io
+    import logging
+    import sys
+
+    from gideon.core import logs
+
+    nul = io.StringIO()
+    nul.name = "nul"
+    monkeypatch.setattr(sys, "stdout", nul)
+    monkeypatch.setattr(sys, "stderr", nul)
+    monkeypatch.setattr(logs, "LOG_DIR", tmp_path)
+    stale = logging.StreamHandler(nul)
+    logging.getLogger().addHandler(stale)
+    try:
+        path = logs.bind_headless_streams("probe")
+        assert path == tmp_path / "probe.log"
+        # A handler created before binding is re-pointed, not left writing to nul.
+        assert stale.stream is sys.stdout
+    finally:
+        logging.getLogger().removeHandler(stale)
+        sys.stdout.close()
 
 
 def test_binding_is_a_noop_with_a_real_console():

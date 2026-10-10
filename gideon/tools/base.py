@@ -81,8 +81,15 @@ class ToolSpec:
     # Channels that may neither see nor run this tool. Telegram is remote and
     # guarded only by a user-ID allowlist, so it never gets code execution.
     blocked_channels: frozenset[str] = frozenset()
-    # Refused until the user confirms, when GIDEON_REQUIRE_CONFIRMATION=1.
+    # Waits for the user's approval when GIDEON_REQUIRE_CONFIRMATION is on.
     confirm: bool = False
+    # Can change the machine. Needs approval whenever outside content (web
+    # pages, documents, clipboard) entered the turn first, whatever the
+    # confirmation setting — that content may carry injected instructions.
+    privileged: bool = False
+    # Returns text from outside the user's control. Marked as data for the
+    # model, and it taints the rest of the turn (see `privileged`).
+    untrusted_output: bool = False
     # Words that signal the user wants this tool; feeds brain/intent.py.
     triggers: frozenset[str] = frozenset()
     # Pass the requesting channel through as `channel=` (for auditing).
@@ -130,6 +137,8 @@ def tool(
     exposed: bool = True,
     blocked_channels: set[str] | frozenset[str] = frozenset(),
     confirm: bool = False,
+    privileged: bool = False,
+    untrusted_output: bool = False,
     triggers: set[str] | frozenset[str] = frozenset(),
     wants_channel: bool = False,
 ) -> Callable[[Callable[..., str]], Callable[..., str]]:
@@ -146,6 +155,8 @@ def tool(
             exposed=exposed,
             blocked_channels=frozenset(blocked_channels),
             confirm=confirm,
+            privileged=privileged,
+            untrusted_output=untrusted_output,
             triggers=frozenset(triggers),
             wants_channel=wants_channel,
         )
