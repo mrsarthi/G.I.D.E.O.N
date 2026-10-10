@@ -25,6 +25,9 @@ os.environ["GIDEON_TELEGRAM_BOT_TOKEN"] = ""
 os.environ["GIDEON_ON_BATTERY"] = "cpu"
 # Never load the real model as a side effect of starting the app in a test.
 os.environ["GIDEON_WARM_UP"] = "0"
+# The router embeds with Ollama; agent tests must not need it. Router tests
+# turn it on explicitly with a fake embedder.
+os.environ["GIDEON_TOOL_ROUTER"] = "0"
 
 
 def pytest_sessionfinish(session, exitstatus):

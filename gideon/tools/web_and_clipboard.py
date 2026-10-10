@@ -113,6 +113,8 @@ def _search_wikipedia(query: str) -> list[str]:
         "The search terms to look up.",
         required=True,
         aliases=("search_query", "q"),
+        grounded=True,
+        ground_ignore=("search", "web", "online", "look", "up", "latest", "news"),
     ),
     untrusted_output=True,
     triggers={
@@ -171,6 +173,8 @@ def get_clipboard() -> str:
         "The content to copy into the clipboard.",
         required=True,
         aliases=("content",),
+        grounded=True,
+        ground_ignore=("copy", "clipboard"),
     ),
     triggers={"clipboard", "copy"},
 )

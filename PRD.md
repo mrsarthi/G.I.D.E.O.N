@@ -230,7 +230,7 @@ Handling of missing fields:
 - **Optional missing → use a stated default** ("I've set it for 9am — change if you want").
 - **Low-stakes irreversible-free action (watchlist) → just do it and report.**
 
-> **Known violation (v0.2):** the current code still fills some required slots itself — `set_reminder` defaults a missing time to "in 1 day", and an unparseable time silently becomes +1 day. Fixing this is part of build-order step 2.
+> **Enforced since Phase 2:** the broker blocks any call whose required slot is missing or holds words the user never said (`tools/validation.py`), and invented optional values are dropped. The old `set_reminder` defaults ("in 1 day", unparseable time → +1 day) are gone; it asks instead.
 
 ### 5.6 Policy — the Sacred List
 
@@ -489,7 +489,7 @@ Correction signals to capture: denied approvals, the user rephrasing or retrying
 
 1. **Tool schemas** — reminder, email draft, watchlist, metrics (required vs optional). *(Schema system exists; three of the four tools do not.)*
 2. **Trace logger** — request → intent → slots → outcome → correction. *(Done in Phase 1: every turn traced with per-stage latency; corrections from 👍/👎, denied approvals and "no, I meant…" messages.)*
-3. **Router** — small fast classifier (or regex/embedding) selects intent; ensures constrained tool calls (grammar/JSON-schema forced output). *(Today: keyword gating — §13.2.)*
+3. **Router** — small fast classifier (or regex/embedding) selects intent; ensures constrained tool calls (grammar/JSON-schema forced output). *(Phase 2: embedding router offers the ~5 relevant tools, 98% recall (FINDINGS F-14). Constrained JSON output not yet built.)*
 4. **RAG prototype** — chunking + embeddings + retrieval on real data.
 5. **Connector #1** — read-only, cached source for "how's my project doing" (the killer demo).
 
@@ -540,7 +540,7 @@ A single question — "how's my project doing?" — returning **visitors, revenu
 | # | Step | Status (v0.2) |
 |---|---|---|
 | 1 | Tool schemas | **Mostly done** — typed `@tool` declarations; return types not yet declared |
-| 2 | Broker (validate / policy / log) | **Partial** — policy gate, approvals and **trace logging** exist; validation (never-assume) missing; policy in code, not config |
+| 2 | Broker (validate / policy / log) | **Done (v1)** — never-assume validation, `policy.toml`, approvals, claimed-action check, trace logging |
 | 3 | Orchestrator + tools, **fast path only** (terminal or voice) | **Working, measured** — agent loop runs over web, quick window, Telegram and terminal; latency traced per stage; real-model eval in place |
 | 4 | Add reasoner handoff | Not started (blocked on VRAM; design the role config first) |
 | 5 | Add RAG | Message recall only |
@@ -613,7 +613,7 @@ State of the interim build as of 2026-10-08 (Windows laptop, `llama3.2` 3B). Cod
 
 ### 13.9 Not yet built
 
-Never-assume validation · policy config file · router with constrained decoding · speech input (STT/wake word) · document RAG and fact memory · reasoner role · `draft_email`, `add_to_watchlist`, `get_project_metrics` · LAN thin-client auth · keyring secrets · Linux port.
+Constrained (JSON-schema) decoding · standing approval rules · speech input (STT/wake word) · document RAG and fact memory · reasoner role · `draft_email`, `add_to_watchlist`, `get_project_metrics` · LAN thin-client auth · keyring secrets · Linux port.
 
 ---
 

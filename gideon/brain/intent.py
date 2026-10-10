@@ -151,3 +151,53 @@ def correct_media_tool_choice(
             return name, {"query": named_track}
 
     return name, args
+
+
+# ---------------------------------------------------------------------------
+#  Claimed actions
+# ---------------------------------------------------------------------------
+# Measured in F-12: qwen2.5 answered 31 tool requests with "I will check your
+# GPU temperature right away" and never called a tool; qwen3:4b-instruct did
+# it 10 times ("I'll set that reminder for you"). To the user that is a false
+# success. A reply matching these patterns, with no tool run in the turn, is
+# sent back to the model once (brain/agent.py).
+_ACTION_VERBS = (
+    r"check|set|add|open|launch|play|search|look|copy|remind|save|note|mute|"
+    r"unmute|turn|run|read|find|pull|get|fetch|start|create|put|mark|list|show|"
+    r"schedule|queue|skip|pause|resume|lower|raise|make|made|write|written|jot"
+)
+# Things only a tool could know. "Here are your reminders: 1. Meeting at 3pm…"
+# without a tool call is invented data (measured on qwen3:4b-instruct, F-15).
+_PERSONAL_DATA = (
+    r"reminders?|to-?do|tasks?|notes?|clipboard|volume|battery|ram|cpu|gpu|"
+    r"files?|documents?|ip(?:\s+address)?|system\s+status"
+)
+_CLAIM_PATTERNS = (
+    # "I'll check", "I will set", "I've added", "Let me open", "I'm going to play"
+    re.compile(
+        r"\b(?:i['’]?ll|i\s+will|i['’]?m\s+going\s+to|let\s+me|i['’]?ve|i\s+have|i\s+am|i['’]?m)"
+        r"\s+(?:now\s+|go\s+ahead\s+and\s+|just\s+|quickly\s+|also\s+)?"
+        rf"(?:{_ACTION_VERBS})\w*\b",
+        re.IGNORECASE,
+    ),
+    # "Checking your GPU now…", "Yes boss. Opening Notepad."
+    re.compile(
+        r"^\W*(?:(?:yes|right\s+away|sure|certainly|okay|ok|of\s+course|on\s+it)\b[^.!?\n]{0,15}[.!,]?\s*)?"
+        r"(?:checking|setting|opening|launching|playing|searching|adding|saving|copying|"
+        r"muting|running|reading|fetching|pulling|scheduling)\b",
+        re.IGNORECASE,
+    ),
+    # "Here are your current reminders: …", "Here's what's on your to-do list"
+    re.compile(
+        r"\bhere(?:['’]s|\s+is|\s+are)\s+(?:what['’]?s\s+on\s+)?(?:your|the)\s+"
+        r"(?:current\s+|upcoming\s+|latest\s+|saved\s+)?"
+        rf"(?:{_PERSONAL_DATA})\b",
+        re.IGNORECASE,
+    ),
+)
+
+
+def claims_action(reply: str) -> bool:
+    """Whether a reply promises or reports doing something a tool would do."""
+    text = (reply or "").strip()
+    return bool(text) and any(p.search(text) for p in _CLAIM_PATTERNS)

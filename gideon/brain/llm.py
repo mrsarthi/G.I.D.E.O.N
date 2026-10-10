@@ -196,3 +196,41 @@ def thinking_kwargs(model: str) -> dict[str, Any]:
             log.debug("Could not read capabilities of %s: %s", model, exc)
             return {}
     return {"think": False} if _thinking_support[model] else {}
+
+
+# ---------------------------------------------------------------------------
+#  Does this model's chat template cache the tool list?
+# ---------------------------------------------------------------------------
+_TOOLS_LOOP = ("range $.Tools", "range .Tools", "for tool in tools")
+_MESSAGES_LOOP = ("range $i, $_ := .Messages", "range .Messages", "for message in messages")
+_template_caches_tools: dict[str, bool] = {}
+
+
+def template_caches_tools(model: str) -> bool:
+    """True when the template renders the tool list *before* the conversation.
+
+    Then the list sits in the cached prefix (Qwen: system block), and a list
+    that changes per message would break that cache — so the router should
+    stay off. When the list is rendered inside the last user message (llama
+    3.2), it is re-read every turn anyway and routing it down is pure gain.
+    Measured in FINDINGS F-13 and F-16.
+    """
+    if model not in _template_caches_tools:
+        try:
+            template = ollama.show(model).template or ""
+        except Exception as exc:
+            log.debug("Could not read the template of %s: %s", model, exc)
+            return False
+
+        def first(markers: tuple[str, ...]) -> int:
+            hits = [template.find(m) for m in markers if m in template]
+            return min(hits) if hits else -1
+
+        tools_at, messages_at = first(_TOOLS_LOOP), first(_MESSAGES_LOOP)
+        _template_caches_tools[model] = 0 <= tools_at < messages_at if messages_at >= 0 else tools_at >= 0
+        log.info(
+            "%s renders tools %s the conversation",
+            model,
+            "before (cached)" if _template_caches_tools[model] else "inside",
+        )
+    return _template_caches_tools[model]

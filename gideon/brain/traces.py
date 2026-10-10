@@ -127,6 +127,8 @@ class TraceRecorder:
         approval: dict[str, Any] | None,
         result: str,
         ms: int,
+        blocked: str | None = None,
+        dropped: list[str] | None = None,
     ) -> None:
         record["tool_calls"].append(
             {
@@ -135,6 +137,11 @@ class TraceRecorder:
                 "source": source,
                 "corrected_from": corrected_from,
                 "approval": approval,
+                # Set when the broker refused to run it (never-assume), e.g.
+                # "missing:time_str" — the model was told to ask instead.
+                "blocked": blocked,
+                # Optional values the model invented and the broker removed.
+                "dropped": dropped or [],
                 "result": (result or "")[:_RESULT_EXCERPT_CHARS],
                 "ms": ms,
             }

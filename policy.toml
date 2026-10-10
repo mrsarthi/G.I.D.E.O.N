@@ -1,0 +1,108 @@
+# G.I.D.E.O.N capability policy — read by the broker at startup.
+#
+# This file is the auditable answer to "what is G.I.D.E.O.N allowed to do?"
+# (PRD §5.6 Sacred List, §9.2 Capability Broker). Edit it, restart the engine,
+# and the change applies everywhere; no code change needed. Every tool must
+# be listed — the test suite fails if one is missing.
+#
+#   class            observe  reads the world, changes nothing
+#                    mutate   changes your stuff (reminders, notes, clipboard, volume…)
+#                    execute  runs programs or commands
+#
+#   confirm          true  → waits for your Approve click on every call
+#                            (while GIDEON_REQUIRE_CONFIRMATION=1, the default)
+#   privileged       true  → waits for your approval whenever the same request
+#                            has read outside content (web pages, documents,
+#                            clipboard, command output) — prompt-injection guard
+#   blocked_channels channels that can neither see nor run the tool
+#                    (Telegram is remote and guarded only by a user-ID allowlist)
+#
+# Sacred list (PRD §5.6) — always confirmed, never voice-only — covers: sending
+# messages, payments, deleting/overwriting files, system settings / installs,
+# running commands, anything that leaves the machine. Of today's tools only
+# the shell is on it; future tools in those categories must be added with
+# confirm = true.
+
+# ---------------------------------------------------------------------------
+#  execute
+# ---------------------------------------------------------------------------
+[tools.run_terminal_command]
+class = "execute"
+confirm = true
+privileged = true
+blocked_channels = ["telegram"]
+
+[tools.launch_app]
+class = "execute"
+confirm = false
+privileged = true
+blocked_channels = ["telegram"]
+
+# ---------------------------------------------------------------------------
+#  mutate — low-stakes and reversible, so free (PRD §5.6 "may do without asking")
+# ---------------------------------------------------------------------------
+[tools.set_reminder]
+class = "mutate"
+
+[tools.save_note]
+class = "mutate"
+
+[tools.complete_task]
+class = "mutate"
+
+[tools.set_clipboard]
+class = "mutate"
+
+[tools.control_volume]
+class = "mutate"
+
+[tools.control_media]
+class = "mutate"
+
+[tools.play_youtube_music]
+class = "mutate"
+
+# ---------------------------------------------------------------------------
+#  observe
+# ---------------------------------------------------------------------------
+[tools.get_system_status]
+class = "observe"
+
+[tools.list_reminders]
+class = "observe"
+
+[tools.list_notes]
+class = "observe"
+
+[tools.search_files]
+class = "observe"
+
+[tools.read_document]
+class = "observe"
+
+[tools.get_clipboard]
+class = "observe"
+
+[tools.search_web]
+class = "observe"
+
+[tools.search_youtube_music]
+class = "observe"
+
+[tools.get_weather]
+class = "observe"
+
+[tools.get_financial_data]
+class = "observe"
+
+[tools.get_hackernews]
+class = "observe"
+
+[tools.get_ip_info]
+class = "observe"
+
+[tools.query_wolfram_alpha]
+class = "observe"
+
+[tools.get_time_date]
+class = "observe"

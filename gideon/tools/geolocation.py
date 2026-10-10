@@ -24,6 +24,7 @@ log = get_logger("gideon.tools.geolocation")
         "Optional IP address to look up. Omit for current device public IP.",
         aliases=("ip",),
         default=None,
+        grounded=True,
     ),
     triggers={"ip", "location", "where", "geolocation", "isp", "timezone"},
 )

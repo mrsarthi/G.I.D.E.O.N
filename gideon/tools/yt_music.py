@@ -50,6 +50,8 @@ def _get_ytmusic_client() -> Any | None:
         "The song title, artist, album name, or playlist search terms.",
         required=True,
         aliases=("search_query", "q"),
+        grounded=True,
+        ground_ignore=("music", "song", "search", "youtube", "yt"),
     ),
     Param(
         "search_filter",
@@ -113,6 +115,8 @@ def search_youtube_music(query: str, search_filter: str | None = None) -> str:
         "The track title, artist name, or playlist to play (e.g., 'Loser Tame Impala' or 'Starboy The Weeknd').",
         required=True,
         aliases=("song", "track", "music"),
+        grounded=True,
+        ground_ignore=("song", "music", "track", "play", "some", "playlist"),
     ),
     triggers={
         "play", "song", "music", "spotify", "listen", "track", "tune",

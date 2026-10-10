@@ -152,6 +152,8 @@ _MAX_MATCHES = 10
         "Friendly name of the application to start, e.g. 'notepad', 'chrome', 'spotify'.",
         required=True,
         aliases=("app", "name"),
+        grounded=True,
+        ground_ignore=("app", "application", "program", "open", "launch", "start"),
     ),
     # Launching programs is local-only: a remote channel never gets it.
     blocked_channels={"telegram"},
@@ -281,6 +283,8 @@ def _gpu_summary(cpu_percent: float) -> str:
         required=True,
         aliases=("query", "filename", "pattern"),
         kwarg="query",
+        grounded=True,
+        ground_ignore=("file", "folder", "find", "search"),
     ),
     triggers={"file", "files", "folder", "directory", "find", "locate"},
 )

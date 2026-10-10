@@ -22,7 +22,7 @@ of it. Superseded findings stay, marked as such — the history is the point.
 | GPU | NVIDIA GTX 1650 Ti, **4 GB VRAM** |
 | CPU | 6 cores / 12 threads |
 | Ollama | 0.35.1 |
-| Default model | `llama3.2:latest` (3.2B, Q4_K_M, 2.0 GB) |
+| Default model | `qwen3:4b-instruct` (4.0B, Q4_K_M, 2.5 GB) since 2026-10-10; `llama3.2:latest` before |
 | Context | `num_ctx` 8192 |
 
 Every latency below is from this machine unless stated. Absolute numbers will
@@ -31,6 +31,97 @@ not transfer to System 2; **ratios and causes will**.
 ---
 
 ## 2. Findings
+
+### F-16 · 2026-10-10 · Phase 2 result: qwen3:4b-instruct without the router is best; the router is right only for llama
+Full Phase 2 harness (never-assume, schema-constrained retry after a claimed
+action, wider claim detector, policy file), each model with the router on
+and off. GPU, 95 cases. Reports: `evals/reports/20261010-*`.
+
+| | llama3.2 + router | llama3.2 | qwen3 + router | **qwen3 (no router)** |
+| :--- | :--- | :--- | :--- | :--- |
+| **Overall** | 77.9% | 77.9% | 74.7% | **80.0%** |
+| Tool selection | 87.9% | 89.4% | 75.8% | 80.3% |
+| Slots | 82.5% | 77.5% | 82.5% | 80.0% |
+| Chat — no tool | 70% | 70% | **100%** | **100%** |
+| Clarify — asks | 60% | 60% | 50% | **70%** |
+| Media | **100%** | 86% | 71% | 86% |
+| First text p50 | 4.6 s | 14.8 s | 4.8 s | **1.6 s** |
+| Whole turn p50 | 5.3 s | 15.7 s | 6.9 s | **5.0 s** |
+
+Against the Phase 1 baseline (F-12): llama3.2 73.7% → 77.9%, clarify 0% → 60%;
+qwen3:4b-instruct 66.3% → **80.0%**, tool selection 59% → 80%.
+
+**Meaning:**
+- **The router is template-dependent, as F-13 predicted.** llama3.2: same
+  accuracy, **3× faster** (it re-reads the tool list every turn). qwen3:
+  slower *and* less accurate (a changing tool list breaks its cached prefix).
+  llama's per-case results shuffled (6 lost, 6 gained) but the total held.
+- **Constraining beats asking** (F-15): the forced retry turned qwen3's main
+  weakness — not acting — into its 80%.
+- llama3.2 still calls tools during plain chat 30% of the time; qwen3 never.
+
+**Decisions:**
+- Router mode **`auto`** (default): on when the model's template renders tools
+  inside the conversation (llama), off when it renders them first (Qwen) —
+  detected from the template (`brain/llm.py: template_caches_tools`).
+- **Default model switched to `qwen3:4b-instruct`** (2026-10-10, user approved)
+  — best accuracy, never calls tools during chat, asks most, fastest to first
+  word.
+- Known UX cost: when the forced retry fires, the model's original claim
+  ("I'll set that…") has already been spoken before the real answer. Fixing
+  that means holding back short replies until classified — deferred.
+
+### F-15 · 2026-10-10 · Never-assume works on llama; asking politely does not work on qwen3
+**Step 1 of Phase 2** — scorer fixed to judge values the way the tool receives
+them, never-assume validation, and a *plain-text* nudge when a reply claimed
+an action with no tool. No router. GPU, 95 cases.
+
+| | llama3.2 before → after | qwen3:4b-instruct before → after |
+| :--- | :--- | :--- |
+| Overall | 73.7% → **77.9%** | 66.3% → 67.4% |
+| Clarify (asks instead of guessing) | **0% → 50%** | 50% → 70% |
+| Media | 57% → **86%** | 57% → 57% |
+| Chat (no tool) | 80% → 75% | 100% → 100% |
+
+**What happened to qwen3's claims:** the detector caught 8 claimed actions
+and nudged — and qwen3 **repeated the same false claim word for word** ("Yes
+sir, I've set a reminder… Yes sir, I've set a reminder…") without a tool.
+It also **invented data** the detector did not cover: "Here are your current
+reminders: 1. Meeting with the team at 3 PM…" with no tool call.
+
+**Decisions:**
+- The retry after a claimed action is now **schema-constrained** (Ollama
+  `format`): the model must return one tool + arguments, or `ask_user` + a
+  question — no prose possible (PRD §10.1 "constrained tool calls"). A forced
+  call still passes validation, policy and approvals.
+- The detector also catches "Here are your reminders / to-do list / notes…"
+  and "I've made a note…".
+- Live check, qwen3, four cases it failed: all four now right (two forced
+  calls, one native call, one invented reminder time blocked → it asked
+  "when would you like to be reminded?"). Cost: the forced retry adds a few
+  seconds when it fires.
+- Lesson: with small models, **don't ask — constrain.** Instructions in the
+  prompt are suggestions; a JSON schema in the decoder is a guarantee.
+
+### F-14 · 2026-10-10 · The embedding router almost never hides the right tool
+**Evidence:** for the 66 eval cases that expect a tool, is that tool among the
+ones the router offers? (nomic-embed-text on CPU, trigger-word tools always
+included, 22 tools total)
+
+| `top_k` | Right tool offered | Tools offered (avg) | Routing time |
+| :--- | :--- | :--- | :--- |
+| 3 | 65/66 (98%) | 3.3 | ~90 ms |
+| 5 | 65/66 (98%) | 5.1 | ~80 ms |
+| 7 | 66/66 (100%) | 7.1 | ~80 ms |
+
+The single miss at 3 and 5 (`tricky-play-chat`) is a case where answering
+without a tool also counts as correct.
+
+**Meaning:** routing costs ~80 ms and removes ~75% of the tool schemas with
+essentially no loss of the right tool. Its effect on the *model's* choices
+and on latency per template is measured end-to-end in F-15.
+**Decision:** router on by default with `top_k = 5` (margin over 3); the
+claimed-action retry offers the full list in case the router was wrong.
 
 ### F-13 · 2026-10-09 · Qwen templates cache the tool list; llama's never does — 5–13× faster tool turns
 **Evidence** (same GPU, same 22 tools, eval traces): median time to the first
@@ -243,6 +334,10 @@ battery (PRD §8.7).
 | 2026-10-09 | Judge cache reuse by `prompt_ms`, not token counts | F-06 |
 | 2026-10-09 | Keep llama3.2 as default for now; re-run the bake-off after Phase 2, expecting qwen3:4b-instruct to win | F-12 |
 | 2026-10-09 | Where a model's template puts tools is a model-selection criterion | F-13 |
+| 2026-10-10 | Never-assume enforced in the broker; invented optional values dropped | F-12, F-15 |
+| 2026-10-10 | After a claimed action, retry with schema-constrained output (don't ask — constrain) | F-15 |
+| 2026-10-10 | Tool router on by default in `auto` mode: per model, from its template | F-14, F-16 |
+| 2026-10-10 | **Default model is now `qwen3:4b-instruct`** (approved by the user) | F-16 |
 | 2026-10-09 | Bigger-model evals on Groq (free, no card) / Kaggle; AWS credits as backup | Free plan blocks GPUs; user prefers no card |
 
 ---
@@ -288,13 +383,13 @@ Work through in order. Record every result as a new finding.
 
 ## 6. Open threads
 
-- **After Phase 2:** re-run the F-12 bake-off (claimed-action check + router
-  in place); decide whether qwen3:4b-instruct replaces llama3.2.
-- Local models kept (2026-10-10): `llama3.2` (default), `qwen3:4b-instruct`
-  (post-Phase-2 re-run), `nomic-embed-text` (memory). Removed to free disk:
+- Spoken false claim before a forced retry (F-16) — hold back short replies
+  until classified?
+- Grow `cases.toml` from real 👎 traces; today's eval is hand-written only.
+- Local models kept (2026-10-10): `qwen3:4b-instruct` (default), `llama3.2`
+  (previous default, kept for comparison), `nomic-embed-text` (memory). Removed to free disk:
   `qwen2.5:3b-instruct` (lost F-12), `qwen2.5-coder:3b`, `gemma4:e4b`.
   To reproduce F-12 exactly: `ollama pull qwen2.5:3b-instruct`.
-- Scorer: accept tool-level argument aliases (e.g. `pause` → `play_pause`).
 - Groq eval of `qwen3-32b` once the eval set is stable (needs a small adapter).
 - Why prompt processing is only ~250 tok/s on the 1650 Ti (F-11): check
   whether `OLLAMA_FLASH_ATTENTION=1` / `OLLAMA_KV_CACHE_TYPE=q8_0` are

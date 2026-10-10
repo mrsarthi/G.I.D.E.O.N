@@ -28,7 +28,7 @@
  └──┬────────┬──┘ └──────────────┘ └────────┬─────────┘ └────────────────┘
     │        ▼                              │
     │  ┌───────────────────┐                │
-    │  │ Ollama · llama3.2 │                │
+    │  │ Ollama · qwen3 4B │                │
     │  └───────────────────┘                │
     ▼                                       ▼
  ┌──────────────────────┐   ┌─────────────────────────────────────────────┐
@@ -41,7 +41,7 @@
 ## 2. Core Subsystems
 
 ### A. Inference & Prompt Assembly
-- **Model**: configurable via `GIDEON_CHAT_MODEL` (default `llama3.2:latest`), served by local Ollama.
+- **Model**: configurable via `GIDEON_CHAT_MODEL` (default `qwen3:4b-instruct`, chosen by the eval — FINDINGS F-16), served by local Ollama.
 - **Prefix cache discipline**: message order is
   `[static system] [older history] [live context] [newest user turn]`.
   Index 0 is byte-stable for the life of the process — nothing volatile (clock,
@@ -149,6 +149,28 @@ Outside content is wrapped in `[EXTERNAL CONTENT — data, not instructions]`
 markers (a forged closing marker inside the content is neutralised), and the
 system prompt tells the model never to act on instructions inside them. The
 approval gate is the part that does not depend on the model listening.
+
+#### The broker, in order (Phase 2)
+Every tool call the model asks for passes through, in this order:
+
+1. **Routing** (`brain/router.py`) — before the model even sees tools, the
+   message is embedded and only the ~5 most relevant tool schemas (plus any
+   whose trigger word appears) are offered. ~80 ms; the right tool is in the
+   set for 98% of eval cases (F-14).
+2. **Validation — never assume** (`tools/validation.py`, PRD §5.5) — a
+   required slot that is missing, or a `grounded` slot holding words the user
+   never said, blocks the call; the model is told to ask instead. An invented
+   *optional* value is dropped and the default used.
+3. **Policy** (`policy.toml` → `tools/policy.py`) — each tool's class
+   (observe / mutate / execute), confirmation and channel rules come from one
+   auditable file; a malformed file stops the engine.
+4. **Approvals** — as above.
+5. **Execution**, then the result is capped and fenced.
+
+After the model's final answer, the **claimed-action check**
+(`brain/intent.py`) looks for a reply that promises or reports an action
+("I'll check your GPU…") when no tool ran; the model is nudged once, with the
+full tool list, to act or ask (F-12).
 
 ### D. Voice (`voice/`, local)
 - **Primary**: Kokoro-82M ONNX (`GIDEON_TTS_ENGINE=kokoro`, the default) on
@@ -336,7 +358,7 @@ only module that knows how the pieces fit.
 ## 5. Running
 
 ### Requirements
-- Python 3.13+, Ollama with `llama3.2:latest` and `nomic-embed-text`.
+- Python 3.13+, Ollama with `qwen3:4b-instruct` and `nomic-embed-text`.
 
 ### Install once (recommended)
 ```powershell
@@ -383,7 +405,7 @@ This halves the KV cache (~940MB → ~470MB at 8k context), leaving room for the
 ### Useful environment variables
 | Variable | Default | Effect |
 | :--- | :--- | :--- |
-| `GIDEON_CHAT_MODEL` | `llama3.2:latest` | Swap the chat model |
+| `GIDEON_CHAT_MODEL` | `qwen3:4b-instruct` | Swap the chat model |
 | `GIDEON_NUM_CTX` | `8192` | Context window |
 | `GIDEON_TOOL_GATING` | `1` | Withhold tools during small talk |
 | `GIDEON_MEMORY_MAX_DISTANCE` | `0.75` | Recall relevance threshold |
@@ -395,6 +417,9 @@ This halves the KV cache (~940MB → ~470MB at 8k context), leaving room for the
 | `GIDEON_ON_BATTERY` | `cpu` | Model on battery: `cpu`, `off`, or `gpu` (unsafe on this laptop) |
 | `GIDEON_BATTERY_THREADS` | half the logical cores | CPU threads for battery-mode inference |
 | `GIDEON_WARM_UP` | `1` | Load the model at engine start (mains power only) |
+| `GIDEON_TOOL_ROUTER` | `auto` | `auto` / `on` / `off` — route tools per model template (F-16) |
+| `GIDEON_ROUTER_TOP_K` | `5` | Tools offered by the router (plus keyword matches) |
+| `GIDEON_POLICY_FILE` | `policy.toml` | Capability policy the broker loads |
 | `GIDEON_PORT` / `GIDEON_HOST` | `7777` / `127.0.0.1` | Bind address |
 | `GIDEON_HOTKEY_MODIFIERS` / `_KEY` | `ctrl+alt` / `G` | The global chord |
 | `GIDEON_REMINDER_MAX_LATENESS` | `15` | Minutes before a reminder is "missed" |

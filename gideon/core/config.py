@@ -54,7 +54,11 @@ def _env_flag(key: str, default: bool) -> bool:
 # ---------------------------------------------------------------------------
 #  Models
 # ---------------------------------------------------------------------------
-CHAT_MODEL = _env("GIDEON_CHAT_MODEL", "llama3.2:latest")
+# qwen3:4b-instruct since 2026-10-10: most accurate on the eval (80% vs
+# llama3.2's 78%), never calls tools during plain chat, asks instead of
+# guessing most often, ~3x faster to the first word (FINDINGS F-16). It must
+# be the *instruct* tag — plain `qwen3:4b` is thinking-only (F-10).
+CHAT_MODEL = _env("GIDEON_CHAT_MODEL", "qwen3:4b-instruct")
 EMBEDDING_MODEL = _env("GIDEON_EMBED_MODEL", "nomic-embed-text")
 
 # Context budget. num_ctx is what Ollama allocates KV cache for; the prompt
@@ -281,6 +285,21 @@ APPROVAL_TTL_MINUTES = _env_int("GIDEON_APPROVAL_TTL_MINUTES", 15)
 # is on, the tool schemas are only offered for messages with operational
 # intent — which also removes ~1200 tokens of prefill from ordinary chat.
 TOOL_GATING = _env_flag("GIDEON_TOOL_GATING", True)
+
+# Offer only the most relevant tools per message (brain/router.py):
+#   auto  on for models whose template re-reads the tool list every turn
+#         (llama3.2: 3x faster, same accuracy), off for models that cache it
+#         (Qwen: routing breaks the cache and costs accuracy) — FINDINGS F-16
+#   on / off  force it. "1"/"0" are accepted as on/off.
+_ROUTER = _env("GIDEON_TOOL_ROUTER", "auto").strip().lower()
+TOOL_ROUTER = {"1": "on", "true": "on", "0": "off", "false": "off"}.get(_ROUTER, _ROUTER)
+if TOOL_ROUTER not in ("auto", "on", "off"):
+    TOOL_ROUTER = "auto"
+
+# Which tools may do what (PRD §5.6, §9.2): capability class, confirmation
+# and channel rules, editable without touching code.
+POLICY_FILE = Path(_env("GIDEON_POLICY_FILE", str(BASE_DIR / "policy.toml")))
+ROUTER_TOP_K = _env_int("GIDEON_ROUTER_TOP_K", 5)
 
 ENFORCE_COMMAND_DENYLIST = _env_flag("GIDEON_COMMAND_DENYLIST", True)
 TERMINAL_TIMEOUT_SECONDS = _env_int("GIDEON_TERMINAL_TIMEOUT", 30)

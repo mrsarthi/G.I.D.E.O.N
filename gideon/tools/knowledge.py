@@ -33,6 +33,8 @@ RETRY_DELAY_SECONDS = 0.4
         "The math equation, scientific query, or factual question.",
         required=True,
         aliases=("q", "input"),
+        grounded=True,
+        ground_ignore=("calculate", "compute", "convert", "what", "how"),
     ),
     untrusted_output=True,
     triggers={

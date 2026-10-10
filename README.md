@@ -26,7 +26,9 @@ needs to (Telegram, the always-on reminder node, cloud TTS).
 ## Quick start
 
 Requirements: Windows, Python 3.13+, [uv](https://docs.astral.sh/uv/), and
-[Ollama](https://ollama.com) with `llama3.2` and `nomic-embed-text` pulled.
+[Ollama](https://ollama.com) with `qwen3:4b-instruct` and `nomic-embed-text` pulled
+(`ollama pull qwen3:4b-instruct` — the *instruct* tag; plain `qwen3:4b` always
+"thinks" and is too slow for conversation).
 
 ```powershell
 uv sync                                   # install dependencies into .venv
@@ -64,13 +66,14 @@ you are most likely to want:
 
 | Variable | Default | Effect |
 | :--- | :--- | :--- |
-| `GIDEON_CHAT_MODEL` | `llama3.2:latest` | Chat model |
+| `GIDEON_CHAT_MODEL` | `qwen3:4b-instruct` | Chat model (chosen by eval — see `FINDINGS.md`) |
 | `GIDEON_TTS_ENGINE` | `kokoro` | `kokoro`, falling back to Piper |
 | `GIDEON_TELEGRAM_BOT_TOKEN` / `_ALLOWED_USERS` | — | Enable the Telegram bot (both required) |
 | `GIDEON_REMOTE_SCHEDULER_URL` / `_TOKEN` | — | Always-on reminder node (both required) |
 | `GIDEON_DATA_DIR` | `data/` | Where the database, vector store and logs live |
 | `GIDEON_REQUIRE_CONFIRMATION` | `1` | Shell commands from the model need your approval |
 | `GIDEON_ON_BATTERY` | `cpu` | On battery the model runs CPU-only (`off` pauses it); the GPU is never used unplugged |
+| `GIDEON_TOOL_ROUTER` | `auto` | Offer only relevant tools: on for models that re-read the tool list each turn (llama), off for models that cache it (Qwen) |
 
 See [GIDEON_ARCHITECTURE.md](GIDEON_ARCHITECTURE.md) for the full list.
 
@@ -95,6 +98,13 @@ tests/          pytest suite
 Dependencies point one way: `interfaces → app → brain / reminders / voice →
 tools → storage → core`.
 
+### What G.I.D.E.O.N may do
+
+`policy.toml` lists every tool with its class (observe / mutate / execute),
+whether it needs your approval, and which channels may use it. Edit it and
+restart the engine — no code change. A malformed file stops the engine
+rather than silently loosening a rule.
+
 ### Adding a tool
 
 Declare it next to its implementation and add the module to
@@ -113,8 +123,10 @@ def get_weather(location: str | None = None) -> str:
 ```
 
 That one declaration produces the schema the model sees, argument
-normalisation, channel policy (`blocked_channels`), the confirmation gate
-(`confirm`) and the words that make tool gating offer it (`triggers`).
+normalisation, the words that make gating and the router offer it
+(`triggers`), and — with `grounded=True` on a parameter — the never-assume
+check that the value came from the user's own words. Then add the tool to
+`policy.toml` with its class and approval rules; the tests fail until you do.
 
 ## Measuring it
 
@@ -123,7 +135,7 @@ each stage took, and your 👍/👎). To measure the model itself:
 
 ```powershell
 .venv\Scripts\python.exe -m gideon.evals                                   # current model
-.venv\Scripts\python.exe -m gideon.evals --models llama3.2:latest,qwen2.5:3b-instruct
+.venv\Scripts\python.exe -m gideon.evals --models qwen3:4b-instruct,llama3.2:latest
 .venv\Scripts\python.exe -m gideon.evals --only clarify,media              # a subset
 ```
 

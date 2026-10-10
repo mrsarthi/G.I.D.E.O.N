@@ -54,9 +54,20 @@ def _apply_clock_time(target: datetime, text: str, default_hour: int = _DEFAULT_
 def parse_natural_time(time_str: str, now: datetime | None = None) -> datetime:
     """Turn a relative time expression into a concrete datetime.
 
-    Falls back to this time tomorrow when nothing is recognised, which is
-    deliberately conservative — better late than fired immediately.
+    Falls back to this time tomorrow when nothing is recognised. Only for
+    callers that must produce *a* time; set_reminder uses recognise_time()
+    and asks instead (PRD §5.5: never assume).
     """
+    ref = now or datetime.now()
+    found = recognise_time(time_str, ref)
+    if found is not None:
+        return found
+    log.debug("Unrecognised time expression %r; defaulting to +1 day", time_str)
+    return (ref + timedelta(days=1)).replace(microsecond=0)
+
+
+def recognise_time(time_str: str, now: datetime | None = None) -> datetime | None:
+    """The datetime a time expression names, or None if it names none."""
     ref = now or datetime.now()
     clean = (time_str or "").strip().lower()
 
@@ -98,8 +109,7 @@ def parse_natural_time(time_str: str, now: datetime | None = None) -> datetime:
                 days_ahead = days_ahead or 7
             return _apply_clock_time(ref + timedelta(days=days_ahead), clean)
 
-    log.debug("Unrecognised time expression %r; defaulting to +1 day", time_str)
-    return (ref + timedelta(days=1)).replace(microsecond=0)
+    return None
 
 
 @tool(
@@ -110,13 +120,18 @@ def parse_natural_time(time_str: str, now: datetime | None = None) -> datetime:
         "The task or note to be reminded about.",
         required=True,
         aliases=("task", "reminder"),
+        grounded=True,
+        ground_ignore=("remind", "reminder", "set", "me", "to"),
     ),
     Param(
         "time_str",
         "Relative time or date expression (e.g. 'in 5 days', 'tomorrow at 9am', 'in 2 hours').",
         required=True,
         aliases=("time", "when"),
-        default="in 1 day",
+        # No default: a reminder time the user never gave is exactly the
+        # invented value PRD §5.5 forbids (it used to be "in 1 day").
+        grounded=True,
+        ground_ignore=("remind", "reminder"),
     ),
     triggers={"remind", "reminder", "reminders", "alarm", "schedule", "alert"},
 )
@@ -126,9 +141,17 @@ def set_reminder(text: str, time_str: str) -> str:
     if not clean_text:
         return "I need to know what to remind you about."
 
+    remind_dt = recognise_time(time_str)
+    if remind_dt is None:
+        # Never assume (PRD §5.5): an unreadable time is a question, not
+        # "tomorrow". The model relays this and asks.
+        return (
+            f"Not saved: I could not work out when '{time_str}' is. Ask the user for a "
+            f"specific time, like 'in 2 hours', 'tomorrow at 9am' or 'Friday at 5pm'."
+        )
+
     try:
         channel, chat_id = get_turn_origin()
-        remind_dt = parse_natural_time(time_str)
         db = get_db()
         reminder_id = db.add_reminder(
             text=clean_text,

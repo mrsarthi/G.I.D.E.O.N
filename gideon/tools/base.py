@@ -46,6 +46,15 @@ class Param:
     aliases: tuple[str, ...] = ()
     default: Any = ""
     kwarg: str | None = None
+    # Maps a model-supplied value onto what the tool accepts (synonyms,
+    # malformed variants). Applied by the dispatcher and by the eval scorer,
+    # so the eval judges the value the tool would actually receive.
+    normalize: Callable[[Any], Any] | None = None
+    # Never-assume (PRD §5.5): the value must come from the user's own words.
+    # See tools/validation.py. `ground_ignore` lists words too generic to
+    # count as evidence for this parameter ("reminder" for a reminder text).
+    grounded: bool = False
+    ground_ignore: tuple[str, ...] = ()
 
     def schema(self) -> dict[str, Any]:
         body: dict[str, Any] = {"type": self.type}
@@ -57,7 +66,8 @@ class Param:
     def resolve(self, arguments: dict[str, Any]) -> Any:
         for key in (self.name, *self.aliases):
             if key in arguments and arguments[key] not in _MISSING_VALUES:
-                return self._coerce(arguments[key])
+                value = self._coerce(arguments[key])
+                return self.normalize(value) if self.normalize else value
         return self.default
 
     def _coerce(self, value: Any) -> Any:
@@ -94,6 +104,8 @@ class ToolSpec:
     triggers: frozenset[str] = frozenset()
     # Pass the requesting channel through as `channel=` (for auditing).
     wants_channel: bool = False
+    # observe | mutate | execute (PRD §9.2). Set from policy.toml.
+    capability: str = "observe"
 
     def schema(self) -> dict[str, Any]:
         parameters: dict[str, Any] = {

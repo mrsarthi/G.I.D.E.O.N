@@ -29,7 +29,14 @@ def _kind(value: str | None) -> str | None:
 @tool(
     "save_note",
     "Save a note or add a task to the user's to-do list. Call when the user asks you to note, jot down, write down or add something to their to-do or task list.",
-    Param("text", "The note or task, in the user's words.", required=True, aliases=("note", "task", "content")),
+    Param(
+        "text",
+        "The note or task, in the user's words.",
+        required=True,
+        aliases=("note", "task", "content"),
+        grounded=True,
+        ground_ignore=("note", "task", "todo", "list", "add", "save", "jot"),
+    ),
     Param(
         "kind",
         "'task' for a to-do item, 'note' for anything to look up later.",
@@ -53,7 +60,14 @@ def save_note(text: str, kind: str = "note") -> str:
     "list_notes",
     "List the user's saved notes or open tasks, optionally only those containing a search word. Call when the user asks what is on their to-do list or what notes they have.",
     Param("kind", "'task' or 'note'. Omit for both.", enum=_KINDS, aliases=("type",), default=None),
-    Param("query", "Only items containing this word. Omit for all.", aliases=("search", "q"), default=None),
+    Param(
+        "query",
+        "Only items containing this word. Omit for all.",
+        aliases=("search", "q"),
+        default=None,
+        grounded=True,
+        ground_ignore=("note", "task", "todo"),
+    ),
     triggers={"note", "notes", "todo", "todos", "task", "tasks"},
 )
 def list_notes(kind: str | None = None, query: str | None = None) -> str:
@@ -71,8 +85,15 @@ def list_notes(kind: str | None = None, query: str | None = None) -> str:
 @tool(
     "complete_task",
     "Mark a task on the user's to-do list as done, by its number. Call when the user says a task is finished or asks to tick it off.",
-    Param("task_id", "The task number, as shown by list_notes.", type="integer", required=True,
-          aliases=("id", "number"), default=None),
+    Param(
+        "task_id",
+        "The task number, as shown by list_notes.",
+        type="integer",
+        required=True,
+        aliases=("id", "number"),
+        default=None,
+        grounded=True,
+    ),
     triggers={"task", "tasks", "todo", "todos"},
 )
 def complete_task(task_id: int | None) -> str:

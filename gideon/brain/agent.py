@@ -25,7 +25,7 @@ from typing import Any
 import ollama
 
 from gideon.brain.approvals import ApprovalQueue, action_payload
-from gideon.brain.intent import correct_media_tool_choice, should_offer_tools
+from gideon.brain.intent import claims_action, correct_media_tool_choice, should_offer_tools
 from gideon.brain.llm import BATTERY_PAUSED_REPLY, chat_options, model_paused, thinking_kwargs
 from gideon.brain.prompt import (
     build_context_window,
@@ -33,6 +33,7 @@ from gideon.brain.prompt import (
     format_messages_for_ollama,
     trim_to_budget,
 )
+from gideon.brain.router import ToolRouter
 from gideon.brain.toolcalls import (
     PSEUDO_CALL_CHAR_LIMIT,
     extract_chunk_content,
@@ -53,6 +54,7 @@ from gideon.core.logs import get_logger
 from gideon.storage.db import DatabaseManager
 from gideon.storage.memory import VectorMemory
 from gideon.tools.registry import dispatch_tool_call, get_tool, tools_for_channel
+from gideon.tools.validation import check_call
 
 log = get_logger("gideon.brain.agent")
 
@@ -61,6 +63,18 @@ OFFLINE_REPLY = (
     "Check that Ollama is running."
 )
 EXHAUSTED_REPLY = "I wasn't able to finish that one — the tool chain ran too long."
+
+# Sent back to the model when its reply promised or reported an action but no
+# tool ran (F-12). Marked as coming from the harness, not the user.
+CLAIMED_ACTION_NUDGE = (
+    "[HARNESS] Your reply says you are doing or have done something, but you did "
+    "not call any tool, so nothing has happened. If you have everything you need, "
+    "call the tool now. If a detail is missing, ask the user for it in one short "
+    "question. Do not say it is done unless a tool has done it."
+)
+# How much recent conversation counts as "what the user said" when checking
+# that tool arguments were not invented (tools/validation.py).
+GROUNDING_MESSAGES = 6
 
 
 # Per-turn events an interface may want to render (an approval card).
@@ -105,6 +119,7 @@ class Agent:
         traces: TraceStore | None = None,
         tool_executor: ToolExecutor | None = None,
         option_overrides: dict[str, Any] | None = None,
+        router: ToolRouter | None = None,
     ) -> None:
         self.db = db
         self.memory = memory
@@ -116,6 +131,7 @@ class Agent:
         self.traces = traces or TraceStore(db)
         self._execute = tool_executor or (lambda name, args, channel: execute_tool(name, args, channel))
         self._option_overrides = dict(option_overrides or {})
+        self.router = router or ToolRouter()
 
     # ------------------------------------------------------------------
     #  Persistence
@@ -197,7 +213,13 @@ class Agent:
         trace.stage("prompt")  # includes memory recall
         # Set once a tool returns text from outside the user's control.
         untrusted_seen = False
-        ran_tool = requested_approval = False
+        ran_tool = requested_approval = blocked_any = False
+        nudged = False
+        # What the user actually said, recently: tool arguments must come from
+        # here, not from the model's imagination (never-assume, PRD §5.5).
+        grounding = "\n".join(
+            [m["content"] for m in context_messages[-GROUNDING_MESSAGES:]] + [user_prompt]
+        )
 
         # Read by tools (set_reminder) to learn where this turn came from.
         current_channel.set(channel)
@@ -207,9 +229,12 @@ class Agent:
         # Schemas are filtered per channel: a remote channel never even sees
         # the tools it is not allowed to run.
         channel_tools = tools_for_channel(channel)
+        # Of those, only the ones relevant to this message (F-11).
+        offered_tools = self.router.select(user_prompt, channel_tools, self.model) if offer_tools else []
+        trace.stage("routing")
         trace.tools_offered = offer_tools
         if offer_tools:
-            trace.tools_offered_names = [t["function"]["name"] for t in channel_tools]
+            trace.tools_offered_names = [t["function"]["name"] for t in offered_tools]
         log.debug("Tools %s for this turn", "offered" if offer_tools else "withheld")
 
         for turn in range(MAX_TOOL_TURNS):
@@ -226,7 +251,7 @@ class Agent:
                 stream = self._chat(
                     model=self.model,
                     messages=messages,
-                    tools=channel_tools if offer_tools else [],
+                    tools=offered_tools if offer_tools else [],
                     stream=True,
                     options=options,
                     keep_alive=CHAT_KEEP_ALIVE,
@@ -297,6 +322,47 @@ class Agent:
                 return
             trace.end_pass(record, stats)
 
+            # No tools requested: a final answer — unless it claims an action
+            # that never happened (F-12). Then send it back once.
+            if (
+                not collected_tool_calls
+                and not nudged
+                and not (ran_tool or requested_approval or blocked_any)
+                and turn < MAX_TOOL_TURNS - 1
+                and claims_action(full_ans)
+            ):
+                nudged = True
+                log.info("Reply claimed an action without a tool; forcing a decision")
+                trace.stages["claimed_action_nudge"] = trace.elapsed_ms()
+                # Gating may have withheld the tools; the router's pick for
+                # this message is the candidate set (98% recall, F-14).
+                # model=None: in "auto" mode this one-off decision call is
+                # routed even for models that cache the full list — nothing is
+                # cached for it, and a short catalog decides better.
+                candidates = offered_tools or self.router.select(user_prompt, channel_tools)
+                forced = self._force_decision(messages, full_ans, candidates, options)
+                if forced is not None and forced["tool"] == "ask_user":
+                    question = str(forced.get("question") or "").strip()
+                    if question:
+                        trace.stages["forced_question"] = trace.elapsed_ms()
+                        blocked_any = True  # outcome: clarified
+                        addition = f"\n\n{question}"
+                        full_ans += addition
+                        yield addition
+                elif forced is not None:
+                    trace.stages["forced_tool_call"] = trace.elapsed_ms()
+                    # The claim was already streamed; keep the real answer that
+                    # follows from running into it ("…for you.Alright boss…").
+                    if full_ans.strip():
+                        yield "\n\n"
+                    offer_tools, offered_tools = True, candidates
+                    trace.tools_offered = True
+                    trace.tools_offered_names = [t["function"]["name"] for t in candidates]
+                    collected_tool_calls = [
+                        {"name": forced["tool"], "arguments": forced["arguments"], "source": "forced"}
+                    ]
+                # Otherwise: no usable decision; the reply stands as given.
+
             # No tools requested: this was the final answer.
             if not collected_tool_calls:
                 if full_ans.strip():
@@ -305,6 +371,7 @@ class Agent:
                 trace.outcome = (
                     "approval_requested" if requested_approval
                     else "tool" if ran_tool
+                    else "clarified" if blocked_any
                     else "answered"
                 )
                 return
@@ -322,8 +389,24 @@ class Agent:
 
                 started_ms = trace.elapsed_ms()
                 approval: dict[str, Any] | None = None
-                reason = approval_reason(name, untrusted_seen)
-                if reason:
+                blocked: str | None = None
+                dropped: list[str] = []
+                reason: str | None = None
+                spec = get_tool(name)
+
+                # Validate first (PRD §5.3): a call with a missing or invented
+                # required value never runs; the model is told to ask.
+                check = check_call(spec, args, grounding) if spec is not None else None
+                if check is not None:
+                    args, dropped = check.arguments, check.dropped
+                    if dropped:
+                        log.info("Dropped invented optional value(s) %s for %s", dropped, name)
+                if check is not None and not check.ok:
+                    blocked = check.problem()
+                    blocked_any = True
+                    log.info("Blocked %s: %s", name, blocked)
+                    tool_result = check.instruction()
+                elif reason := approval_reason(name, untrusted_seen):
                     action = self.approvals.request(
                         session_id, channel, name, args, trace_id=trace.trace_id
                     )
@@ -350,10 +433,11 @@ class Agent:
                     approval=approval,
                     result=tool_result,
                     ms=trace.elapsed_ms() - started_ms,
+                    blocked=blocked,
+                    dropped=dropped,
                 )
 
-                spec = get_tool(name)
-                untrusted = bool(spec and spec.untrusted_output and not reason)
+                untrusted = bool(spec and spec.untrusted_output and not reason and not blocked)
                 untrusted_seen = untrusted_seen or untrusted
 
                 # Stored as 'tool_call'/'tool' so build_context_window never
@@ -381,6 +465,66 @@ class Agent:
         log.warning("Tool loop exhausted %d turns without a final answer", MAX_TOOL_TURNS)
         trace.outcome = "exhausted"
         yield EXHAUSTED_REPLY
+
+    def _force_decision(
+        self,
+        messages: list[dict[str, Any]],
+        claim: str,
+        tools: list[dict[str, Any]],
+        options: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """Ask again, with output constrained to a tool call or a question.
+
+        F-15: a polite reminder did not work — qwen3:4b-instruct repeated its
+        false claim word for word. Constrained decoding (PRD §10.1) leaves the
+        model no prose to fall back on: it must name one tool and its
+        arguments, or `ask_user` with a question. The result still goes
+        through validation, policy and approvals like any other call.
+        """
+        names = [t["function"]["name"] for t in tools]
+        if not names:
+            return None
+        catalog = "\n".join(
+            f"- {t['function']['name']}("
+            + ", ".join(t["function"].get("parameters", {}).get("properties", {}))
+            + f"): {t['function']['description'][:180]}"
+            for t in tools
+        )
+        schema = {
+            "type": "object",
+            "properties": {
+                "tool": {"type": "string", "enum": [*names, "ask_user"]},
+                "arguments": {"type": "object"},
+                "question": {"type": "string"},
+            },
+            "required": ["tool", "arguments"],
+        }
+        prompt = (
+            f"{CLAIMED_ACTION_NUDGE}\n\nAvailable tools:\n{catalog}\n\n"
+            'Reply with JSON only: {"tool": <tool name, or "ask_user" if a detail '
+            'is missing>, "arguments": {...}, "question": <only for ask_user>}.'
+        )
+        try:
+            response = self._chat(
+                model=self.model,
+                messages=[*messages, {"role": "assistant", "content": claim}, {"role": "user", "content": prompt}],
+                tools=[],
+                stream=False,
+                format=schema,
+                options=options,
+                keep_alive=CHAT_KEEP_ALIVE,
+                **thinking_kwargs(self.model),
+            )
+            decision = json.loads(extract_chunk_content(response) or "{}")
+        except Exception as exc:
+            log.warning("Forced tool decision failed: %s", exc)
+            return None
+        if not isinstance(decision, dict) or decision.get("tool") not in (*names, "ask_user"):
+            return None
+        if not isinstance(decision.get("arguments"), dict):
+            decision["arguments"] = {}
+        log.info("Forced decision: %s(%s)", decision["tool"], decision["arguments"])
+        return decision
 
     def respond(
         self,

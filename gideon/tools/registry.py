@@ -14,6 +14,7 @@ from __future__ import annotations
 import importlib
 from typing import Any
 
+from gideon.core.config import POLICY_FILE
 from gideon.core.logs import get_logger
 from gideon.tools.base import _REGISTRY, ToolSpec
 
@@ -37,6 +38,12 @@ _TOOL_MODULES = (
 
 for _module in _TOOL_MODULES:
     importlib.import_module(f"gideon.tools.{_module}")
+
+# policy.toml is the source of truth for what each tool may do; the values in
+# the @tool declarations are fallbacks (tools/policy.py).
+from gideon.tools.policy import apply_policy, load_policy  # noqa: E402
+
+apply_policy(_REGISTRY, load_policy(POLICY_FILE))
 
 # The order schemas are offered in. Small models are order-biased — the
 # specific play_youtube_music must precede the generic control_media or "play

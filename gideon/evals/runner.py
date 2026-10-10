@@ -32,9 +32,10 @@ from typing import Any
 
 from gideon.brain.agent import Agent
 from gideon.brain.llm import chat_options
-from gideon.core.config import BASE_DIR, CHAT_MODEL
+from gideon.core.config import BASE_DIR, CHAT_MODEL, ROUTER_TOP_K, TOOL_ROUTER
 from gideon.core.power import on_battery
 from gideon.storage.db import get_db
+from gideon.tools.registry import get_tool
 
 CASES_FILE = BASE_DIR / "evals" / "cases.toml"
 REPORTS_DIR = BASE_DIR / "evals" / "reports"
@@ -117,6 +118,21 @@ def _contains(value: Any, expected: str) -> bool:
     return expected.lower() in str(value if value is not None else "").lower()
 
 
+def slot_value(tool_name: str, slot: str, args: dict[str, Any]) -> Any:
+    """The value the tool would actually receive for `slot`.
+
+    Applies the tool's own argument aliases and normalisers, so the eval
+    does not fail a model for writing "pause" when the tool accepts it as
+    "play_pause" (F-12's scorer caveat).
+    """
+    spec = get_tool(tool_name)
+    if spec is not None:
+        for param in spec.params:
+            if param.name == slot:
+                return param.resolve(args)
+    return args.get(slot)
+
+
 def score(case: Case, trace: dict[str, Any]) -> tuple[bool, str]:
     """(passed, reason). Reasons are stable labels used in the report."""
     calls = [c for p in trace["detail"].get("passes", []) for c in p["tool_calls"]]
@@ -124,7 +140,10 @@ def score(case: Case, trace: dict[str, Any]) -> tuple[bool, str]:
     reply = trace.get("reply") or ""
 
     if case.ask:
-        forbidden = [n for n in names if n in case.forbid]
+        # A call the broker blocked for a missing/invented value never ran,
+        # so it is not a guess — the harness turned it into a question.
+        executed = [c["name"] for c in calls if not c.get("blocked")]
+        forbidden = [n for n in executed if n in case.forbid]
         if forbidden:
             return False, f"guessed:{forbidden[0]}"
         if "?" not in reply:
@@ -142,9 +161,13 @@ def score(case: Case, trace: dict[str, Any]) -> tuple[bool, str]:
     first = calls[0]
     if first["name"] not in case.tools:
         return False, f"wrong_tool:{first['name']}"
+    if first.get("blocked"):
+        # Right tool, but the broker refused it — usually a false block by
+        # the grounding check. Counted so over-blocking shows up.
+        return False, f"blocked:{first['blocked']}"
 
     for slot, expected in case.args.items():
-        if not _contains(first["args"].get(slot), expected):
+        if not _contains(slot_value(first["name"], slot, first["args"]), expected):
             return False, f"slot:{slot}"
     return True, "ok"
 
@@ -196,7 +219,12 @@ def run(model: str = CHAT_MODEL, only: list[str] | None = None, progress: bool =
                 "expected": case.tools or ("ask" if case.ask else ["none"]),
                 "passed": passed,
                 "reason": reason,
-                "calls": [{"name": c["name"], "args": c["args"], "source": c["source"]} for c in calls],
+                "calls": [
+                    {"name": c["name"], "args": c["args"], "source": c["source"],
+                     "blocked": c.get("blocked")}
+                    for c in calls
+                ],
+                "nudged": "claimed_action_nudge" in trace["detail"].get("stages", {}),
                 "tools_offered": trace["tools_offered"],
                 "reply": trace["reply"],
                 "first_text_ms": trace["first_text_ms"],
@@ -211,7 +239,7 @@ def run(model: str = CHAT_MODEL, only: list[str] | None = None, progress: bool =
             mark = "PASS" if passed else "FAIL"
             print(f"[{index:3}/{len(cases)}] {mark} {case.id:28} {reason}", flush=True)
 
-    return _summarise(model, results, time.perf_counter() - started)
+    return _summarise(model, results, time.perf_counter() - started, agent.router.active_for(model))
 
 
 def _rate(items: list[dict[str, Any]]) -> dict[str, Any]:
@@ -221,7 +249,9 @@ def _rate(items: list[dict[str, Any]]) -> dict[str, Any]:
     return {"passed": passed, "total": len(items), "pct": round(100 * passed / len(items), 1)}
 
 
-def _summarise(model: str, results: list[dict[str, Any]], seconds: float) -> dict[str, Any]:
+def _summarise(
+    model: str, results: list[dict[str, Any]], seconds: float, agent_router_active: bool = False
+) -> dict[str, Any]:
     by_category: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for r in results:
         by_category[r["category"]].append(r)
@@ -238,6 +268,11 @@ def _summarise(model: str, results: list[dict[str, Any]], seconds: float) -> dic
         "placement": "cpu" if options.get("num_gpu") == 0 else "gpu",
         "on_battery": on_battery(),
         "options": EVAL_OPTIONS,
+        "router": {
+            "mode": TOOL_ROUTER,
+            "enabled": agent_router_active,
+            "top_k": ROUTER_TOP_K,
+        },
         "seconds": round(seconds),
         "overall": _rate(results),
         "categories": {name: _rate(items) for name, items in sorted(by_category.items())},
@@ -274,7 +309,8 @@ def render_markdown(report: dict[str, Any]) -> str:
         "",
         f"Run {report['run_at']} on **{report['placement'].upper()}**"
         f"{' (battery)' if report['on_battery'] else ''}, {report['seconds']}s, "
-        f"options {report['options']}.",
+        f"options {report['options']}, router "
+        f"{('top ' + str(report['router']['top_k'])) if report.get('router', {}).get('enabled') else 'off'}.",
         "",
         "| Metric | Result |",
         "| :--- | :--- |",
@@ -315,7 +351,12 @@ def save(report: dict[str, Any]) -> Path:
 
 def compare(paths: list[Path]) -> str:
     reports = [json.loads(p.read_text(encoding="utf-8")) for p in paths]
-    names = [f"{r['model']} ({r['placement']})" for r in reports]
+    def label(r: dict[str, Any]) -> str:
+        router = r.get("router", {})
+        routed = f", router {router['top_k']}" if router.get("enabled") else ""
+        return f"{r['model']} ({r['placement']}{routed})"
+
+    names = [label(r) for r in reports]
     lines = ["| Metric | " + " | ".join(names) + " |", "| :--- |" + " :--- |" * len(reports)]
 
     def row(label: str, values: list[str]) -> None:
