@@ -164,7 +164,8 @@ def correct_media_tool_choice(
 _ACTION_VERBS = (
     r"check|set|add|open|launch|play|search|look|copy|remind|save|note|mute|"
     r"unmute|turn|run|read|find|pull|get|fetch|start|create|put|mark|list|show|"
-    r"schedule|queue|skip|pause|resume|lower|raise|make|made|write|written|jot"
+    r"schedule|queue|skip|pause|resume|lower|raise|make|made|write|written|jot|"
+    r"retriev|grab|bring"
 )
 # Things only a tool could know. "Here are your reminders: 1. Meeting at 3pm…"
 # without a tool call is invented data (measured on qwen3:4b-instruct, F-15).
@@ -180,6 +181,13 @@ _CLAIM_PATTERNS = (
         rf"(?:{_ACTION_VERBS})\w*\b",
         re.IGNORECASE,
     ),
+    # "I can check your GPU temperature right now." — an offer made instead of
+    # the call (eval, 2026-10-12). Needs "right now/away" so describing what
+    # G.I.D.E.O.N can do ("I can set reminders for you") is not a claim.
+    re.compile(
+        rf"\bi\s+can\s+(?:{_ACTION_VERBS})\w*\b[^.!?\n]{{0,60}}\bright\s+(?:now|away)\b",
+        re.IGNORECASE,
+    ),
     # "Checking your GPU now…", "Yes boss. Opening Notepad."
     re.compile(
         r"^\W*(?:(?:yes|right\s+away|sure|certainly|okay|ok|of\s+course|on\s+it)\b[^.!?\n]{0,15}[.!,]?\s*)?"
@@ -192,6 +200,35 @@ _CLAIM_PATTERNS = (
         r"\bhere(?:['’]s|\s+is|\s+are)\s+(?:what['’]?s\s+on\s+)?(?:your|the)\s+"
         r"(?:current\s+|upcoming\s+|latest\s+|saved\s+)?"
         rf"(?:{_PERSONAL_DATA})\b",
+        re.IGNORECASE,
+    ),
+    # Reporting the result instead of promising it: "Notepad is now open",
+    # "Your reminder has been set", "Calculator launched successfully"
+    # (measured on qwen3:4b-instruct: "Yes boss. Notepad is now open." with
+    # no tool call).
+    re.compile(
+        r"\b(?:is|are)\s+now\s+(?:open(?:ed)?|launched|running|playing|paused|muted|unmuted|"
+        r"set|saved|added|copied|scheduled|on|off|at\s+\d+)\b"
+        r"|\b(?:has|have)\s+(?:now\s+|just\s+)?been\s+(?:successfully\s+)?"
+        r"(?:opened|launched|started|set|saved|added|copied|scheduled|created|muted|unmuted|"
+        r"paused|resumed|played|noted|completed|marked|run|adjusted|changed)\b"
+        r"|\b(?:opened|launched|started|saved|added|copied|scheduled|set)\s+successfully\b"
+        r"|\bsuccessfully\s+(?:opened|launched|started|saved|added|copied|scheduled|set)\b",
+        re.IGNORECASE,
+    ),
+    # Live facts only a tool could know. The live context carries the time
+    # but no weather or prices, so "The current weather in Varanasi is mostly
+    # cloudy with a high of 28°C" with no tool call is invented (seen live,
+    # 100% on that phrasing).
+    re.compile(
+        r"\bweather\s+(?:in|for|at|around)\s+[^.?!\n]{1,40}?\s+(?:is|looks|will\s+be)\b"
+        r"|\bchance\s+of\s+(?:light\s+|heavy\s+)?(?:rain|showers|drizzle|snow|thunderstorms?)\b"
+        r"|\b(?:high|low)\s+of\s+-?\d+"
+        r"|\bcurrently\s+trading\s+at\b"
+        # The opposite failure: refusing what a tool can do. "I don't have
+        # access to real-time weather data" while get_weather is offered.
+        r"|\b(?:don['’]?t|do\s+not|can['’]?t|cannot)\s+(?:have\s+)?(?:access\s+to\s+|provide\s+|check\s+)?"
+        r"(?:the\s+)?(?:real[-\s]?time|live|current)\s+(?:weather|temperature|data|information|prices?)\b",
         re.IGNORECASE,
     ),
 )

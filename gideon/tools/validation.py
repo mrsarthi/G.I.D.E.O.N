@@ -46,6 +46,20 @@ def _words(text: str) -> set[str]:
     return {_stem(w) for w in _WORD.findall(text.lower())}
 
 
+# Pointing words: "copy that" names nothing the model could copy.
+_POINTERS = frozenset(["that", "this", "it", "these", "those", "them", "something", "stuff"])
+
+
+def is_informative(value: Any) -> bool:
+    """Whether `value` says anything beyond filler and pointing words.
+
+    Not the tool's `ground_ignore` words: those are poor *evidence* but can be
+    real values (search_web(query="news")).
+    """
+    ignored = {_stem(w) for w in _STOPWORDS | _POINTERS}
+    return any(w not in ignored for w in _words(str(value)))
+
+
 def is_grounded(value: Any, grounding: str, ignore: tuple[str, ...] = ()) -> bool:
     """Whether `value` plausibly came from the user's own words."""
     ignored = {_stem(w) for w in _STOPWORDS | {w.lower() for w in ignore}}
@@ -55,7 +69,20 @@ def is_grounded(value: Any, grounding: str, ignore: tuple[str, ...] = ()) -> boo
         # own, so there is nothing to have invented. Missing-ness is checked
         # separately.
         return True
-    return bool(set(content) & _words(grounding))
+    said = _words(grounding)
+    # Two spoken words run together: "vs code" -> "vscode".
+    sequence = _WORD.findall(grounding.lower())
+    said |= {a + b for a, b in zip(sequence, sequence[1:], strict=False)}
+    return any(_same_word(word, heard) for word in content for heard in said)
+
+
+def _same_word(value_word: str, said_word: str) -> bool:
+    """Exact, or one is a shortening of the other: the user said "calculator"
+    and the model wrote "calc" (seen live), or said "spot" for "spotify"."""
+    if value_word == said_word:
+        return True
+    shorter, longer = sorted((value_word, said_word), key=len)
+    return len(shorter) >= 4 and longer.startswith(shorter)
 
 
 @dataclass
@@ -102,6 +129,11 @@ def check_call(spec: ToolSpec, arguments: dict[str, Any], grounding: str) -> Slo
         if not param.grounded:
             continue
         value = args[present[0]]
+        if param.required and not is_informative(value):
+            # set_clipboard(text="That") for "copy that to my clipboard":
+            # the value is present but says nothing, so it is still missing.
+            result.missing.append(param)
+            continue
         if is_grounded(value, grounding, param.ground_ignore):
             continue
         if param.required:

@@ -18,6 +18,7 @@ Tool calls pass through one policy before they run:
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable, Iterator
 from datetime import datetime
 from typing import Any
@@ -75,6 +76,48 @@ CLAIMED_ACTION_NUDGE = (
 # How much recent conversation counts as "what the user said" when checking
 # that tool arguments were not invented (tools/validation.py).
 GROUNDING_MESSAGES = 6
+# How much of a reply is held back for checking when tools were offered.
+OPENING_MIN_CHARS = 80
+OPENING_MAX_CHARS = 240
+_SENTENCE_END = re.compile(r"[.!?](?:\s|$)")
+
+
+class OpeningGate:
+    """Holds back the start of a reply until it is known not to be a false claim.
+
+    When tools were offered and the model answers in prose instead, that prose
+    is often "Yes boss. Notepad is now open." or an invented forecast — and
+    once streamed it is spoken, so the forced decision's real answer arrives
+    as a contradiction. Claims come first, so holding the opening sentence or
+    two (cut at a sentence end once OPENING_MIN_CHARS have arrived, or at
+    OPENING_MAX_CHARS) is enough; sentence-level TTS waits for a sentence end
+    anyway, so an honest reply loses little. After a claim nothing is
+    released, so the claim can be replaced instead of spoken.
+    """
+
+    def __init__(self, active: bool) -> None:
+        self.active = active
+        self.claimed = False
+        self._buffer = ""
+
+    def feed(self, text: str) -> str:
+        """Text that may be shown now ("" while holding)."""
+        if not self.active:
+            return text
+        self._buffer += text
+        if self.claimed or claims_action(self._buffer):
+            self.claimed = True
+            return ""
+        if len(self._buffer) >= OPENING_MAX_CHARS or (
+            len(self._buffer) >= OPENING_MIN_CHARS and _SENTENCE_END.search(self._buffer)
+        ):
+            return self.release()
+        return ""
+
+    def release(self) -> str:
+        """Everything held so far; the gate stays open from here on."""
+        text, self._buffer, self.active = self._buffer, "", False
+        return text
 
 
 # Per-turn events an interface may want to render (an approval card).
@@ -247,6 +290,10 @@ class Agent:
             trace.placement = "cpu" if options.get("num_gpu") == 0 else "gpu"
             record = trace.start_pass()
             stats: dict[str, Any] = {}
+            # Only a first answer can be a false claim of a tool's work.
+            gate = OpeningGate(
+                offer_tools and not nudged and not (ran_tool or requested_approval or blocked_any)
+            )
             try:
                 stream = self._chat(
                     model=self.model,
@@ -286,12 +333,14 @@ class Agent:
                         split_at = json_start_index(token)
                         if split_at is None:
                             full_ans += token
-                            yield token
+                            if shown := gate.feed(token):
+                                yield shown
                             continue
                         prefix, held = token[:split_at], token[split_at:]
                         if prefix:
                             full_ans += prefix
-                            yield prefix
+                            if shown := gate.feed(prefix):
+                                yield shown
 
                     pseudo = parse_pseudo_tool_call(held)
                     if is_tool_call_candidate(pseudo):
@@ -301,7 +350,8 @@ class Agent:
                     elif len(held) >= PSEUDO_CALL_CHAR_LIMIT:
                         # Too long to be a tool call — release it as speech.
                         full_ans += held
-                        yield held
+                        if shown := gate.feed(held):
+                            yield shown
                         held = ""
 
                 # Anything still withheld when the stream ends.
@@ -312,7 +362,10 @@ class Agent:
                         collected_tool_calls.append({**pseudo, "source": "text"})
                     else:
                         full_ans += held
-                        yield held
+                        if shown := gate.feed(held):
+                            yield shown
+                if gate.active and not gate.claimed and (shown := gate.release()):
+                    yield shown
 
             except Exception as exc:
                 log.exception("Ollama stream failed on turn %d", turn)
@@ -346,14 +399,25 @@ class Agent:
                     if question:
                         trace.stages["forced_question"] = trace.elapsed_ms()
                         blocked_any = True  # outcome: clarified
-                        addition = f"\n\n{question}"
-                        full_ans += addition
-                        yield addition
+                        if gate.claimed:
+                            # The claim was held back: the question replaces it.
+                            gate.release()
+                            full_ans = question
+                            yield question
+                        else:
+                            addition = f"\n\n{question}"
+                            full_ans += addition
+                            yield addition
                 elif forced is not None:
                     trace.stages["forced_tool_call"] = trace.elapsed_ms()
-                    # The claim was already streamed; keep the real answer that
-                    # follows from running into it ("…for you.Alright boss…").
-                    if full_ans.strip():
+                    if gate.claimed:
+                        # Held back, never shown: drop it, so neither the user
+                        # nor the next pass sees the false claim.
+                        gate.release()
+                        full_ans = ""
+                    elif full_ans.strip():
+                        # The claim was already streamed; keep the real answer
+                        # that follows from running into it.
                         yield "\n\n"
                     offer_tools, offered_tools = True, candidates
                     trace.tools_offered = True
@@ -362,6 +426,9 @@ class Agent:
                         {"name": forced["tool"], "arguments": forced["arguments"], "source": "forced"}
                     ]
                 # Otherwise: no usable decision; the reply stands as given.
+            # Anything still held (no decision was made) is the answer after all.
+            if gate.active and (shown := gate.release()):
+                yield shown
 
             # No tools requested: this was the final answer.
             if not collected_tool_calls:

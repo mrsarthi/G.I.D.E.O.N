@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 import pytest
 
-from gideon.brain.agent import CLAIMED_ACTION_NUDGE, Agent
+from gideon.brain.agent import CLAIMED_ACTION_NUDGE, Agent, OpeningGate
 from gideon.brain.intent import claims_action
 from gideon.evals.runner import Case, fake_tool, score
 from gideon.storage.db import get_db
@@ -34,6 +34,11 @@ from gideon.tools.validation import check_call, is_grounded
         ("last Formula One race results", "look up who won the last F1 race", True),  # paraphrase
         ("reminders", "show me my reminder", True),  # plural folding
         ("the file", "find the file", True),  # filler only: nothing to have invented
+        ("calc", "open calculator", True),  # model's shortening of the user's word
+        ("spotify", "open spo", False),  # too short to be evidence
+        ("spotify", "launch spoti", True),  # user's shortening
+        ("chrome", "open calculator", False),
+        ("vscode", "launch vs code for me", True),  # spoken words run together
     ],
 )
 def test_grounding(value, said, expected):
@@ -55,6 +60,12 @@ def test_missing_required_value_blocks_the_call():
     assert not check.ok
     assert check.problem() == "missing:time_str"
     assert "Ask the user" in check.instruction()
+
+
+def test_a_pointing_word_is_not_a_value():
+    """Eval 2026-10-12: "copy that to my clipboard" -> set_clipboard(text="That")."""
+    check = check_call(get_tool("set_clipboard"), {"text": "That"}, "copy that to my clipboard")
+    assert check.problem() == "missing:text"
 
 
 def test_invented_required_value_blocks_the_call():
@@ -104,6 +115,8 @@ def _chat(*turns):
             return {"message": {"content": json.dumps(turn)}}
         if isinstance(turn, str):
             return iter([{"message": {"content": turn}}])
+        if isinstance(turn, tuple):  # streamed in pieces
+            return iter([{"message": {"content": piece}} for piece in turn])
         return iter(
             [{"message": {"tool_calls": [{"function": {"name": n, "arguments": a}} for n, a in turn]}}]
         )
@@ -149,6 +162,14 @@ def test_guessed_reminder_time_is_never_saved():
         "I have set a reminder for you to call the bank.",
         "Yes sir, I'll set that reminder for you.",
         "Checking your RAM now.",
+        # Reported results with no tool call (seen live on qwen3:4b-instruct)
+        "Yes boss. Notepad is now open. What would you like to write, sir?",
+        "Yes boss. The calculator is now open.",
+        "Your reminder has been set for 5 pm.",
+        "Calculator launched successfully.",
+        "The volume is now at 30 percent.",
+        "Yes boss, I can check your GPU temperature right now. Let me retrieve that for you.",
+        "I don't have access to real-time weather data. Try a weather app.",
     ],
 )
 def test_claims_are_detected(reply):
@@ -162,6 +183,10 @@ def test_claims_are_detected(reply):
         "Let me explain how a hash map works.",
         "I am doing well, thanks for asking.",
         "Your GPU is at 52 degrees.",
+        "The shop is open until 9 pm on weekdays.",
+        "Python has been around since 1991.",
+        "That setting is now deprecated in newer versions.",
+        "I can set reminders, open apps and check the weather for you.",
     ],
 )
 def test_ordinary_replies_are_not_claims(reply):
@@ -202,7 +227,8 @@ def test_a_forced_call_still_goes_through_validation():
 def test_a_forced_question_is_asked():
     chat = _chat("I'll set that up for you.", {"tool": "ask_user", "arguments": {}, "question": "For what time?"})
     reply, trace = _run(Agent(get_db(), None, chat=chat), "set a reminder please")
-    assert reply.endswith("For what time?")
+    # The claim was held back, so the question replaces it rather than following it.
+    assert reply == "For what time?"
     assert trace["outcome"] == "clarified"
 
 
@@ -257,3 +283,49 @@ def test_scorer_judges_the_value_the_tool_receives():
     case = Case("m", "pause the music", "media", tools=["control_media"], args={"action": "play_pause"})
     calls = [{"name": "control_media", "args": {"action": "pause"}}]
     assert score(case, _trace(calls)) == (True, "ok")
+
+
+# ---------------------------------------------------------------------------
+#  The opening gate: a false claim is replaced, not spoken
+# ---------------------------------------------------------------------------
+def test_a_held_claim_is_replaced_by_the_real_result():
+    """Seen live: "Yes boss. Notepad is now open." with no tool call."""
+    chat = _chat(
+        ("Yes boss. ", "Notepad is ", "now open. What would you like to write?"),
+        {"tool": "launch_app", "arguments": {"app_name": "notepad"}},
+        "Notepad is open, sir.",
+    )
+    agent = Agent(get_db(), None, chat=chat, tool_executor=fake_tool)
+    session = get_db().create_session("gate")
+    agent.record_user_message(session, "open notepad")
+    pieces = list(agent.stream(session, "open notepad"))
+
+    assert "".join(pieces) == "Notepad is open, sir."
+    # The next pass never saw the false claim as something it said.
+    assert all("now open" not in (m.get("content") or "") for m in chat.calls[2]["messages"] if m["role"] == "assistant")
+
+
+def test_invented_weather_is_replaced():
+    chat = _chat(
+        "The current weather in Varanasi is mostly cloudy with a high of 28°C.",
+        {"tool": "get_weather", "arguments": {"location": "Varanasi"}},
+        "It is clear and 24°C in Varanasi.",
+    )
+    reply, trace = _run(
+        Agent(get_db(), None, chat=chat, tool_executor=fake_tool), "what's the weather like in varanasi today?"
+    )
+    assert reply == "It is clear and 24°C in Varanasi."
+    assert trace["detail"]["passes"][0]["tool_calls"][0]["source"] == "forced"
+
+
+def test_an_honest_reply_streams_once_its_opening_is_checked():
+    long_first = "A light-year is the distance light travels in one year, about 9.46 trillion kilometres. "
+    gate = OpeningGate(active=True)
+    assert gate.feed("A light-year is ") == ""            # held while too short to judge
+    released = gate.feed(long_first[len("A light-year is "):])
+    assert released == long_first                         # whole first sentence, at once
+    assert gate.feed("Proxima is 4.2 of them away.") == "Proxima is 4.2 of them away."
+
+
+def test_the_gate_is_off_when_no_tools_were_offered():
+    assert OpeningGate(active=False).feed("Yes boss. Notepad is now open.") == "Yes boss. Notepad is now open."

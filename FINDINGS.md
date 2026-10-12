@@ -32,6 +32,71 @@ not transfer to System 2; **ratios and causes will**.
 
 ## 2. Findings
 
+### F-17 · 2026-10-12 · Live: qwen3 reports results it never produced — "Notepad is now open", invented weather
+User report: "open calculator" and "Open notepad" (quick-ask, 2026-10-10) got
+"Yes boss. The calculator is now open." with nothing opened. The traces for
+that whole session show **zero tool calls in 7 turns**. `launch_app` was
+offered every time, and the weather answer ("clear, 24.6 °C, no chance of
+rain") was invented too.
+
+Three separate faults, each reproduced by replaying the turn through the real
+agent with fake tools (scratch replay, 2–3 runs each):
+
+1. **The claim detector only knew promises** ("I'll open…", "Opening…"), not
+   reported results ("X is now open", "has been set"), nor invented live
+   facts (weather, "chance of rain", "high of 28°C"). Nothing triggered the
+   forced decision. Added both pattern families (`brain/intent.py`).
+2. **Conversation history suppresses native tool calls.** The same prompt
+   gave a native `launch_app` call 2/2 times with no history, and 0/6 times
+   after three earlier plain-text answers. Memory recall is *not* the cause:
+   same result with memory on or off. One long phrasing ("What does the
+   weather look like in varanasi today, also is there any chance of rain?")
+   gets no tool call even without history (4/4). Phase 2's claim → forced
+   decision catches all of these now, at ~7 s extra per affected turn.
+3. **Never-assume rejected the model's shortening of the user's word**:
+   user "open calculator", model `app_name="calc"`, blocked as ungrounded,
+   so G.I.D.E.O.N asked "What app would you like me to open?". Grounding now
+   accepts a 4+-letter prefix either way (`calc` ↔ `calculator`).
+
+Also fixed the **spoken false claim** (F-16's known UX cost): when tools were
+offered, the opening of the reply (first sentence ≥ 80 chars, max 240) is
+held until checked. A claim is never shown; the forced call's real answer or
+question replaces it, and it is kept out of the next pass's messages. Honest
+replies lose at most one sentence of streaming, which sentence-level TTS
+waits for anyway.
+
+Replay after the fix: calculator 2/2, notepad 2/2, Varanasi weather 2/2 —
+each a single truthful reply ("Calculator has been opened, sir."), the tool
+actually called.
+
+The eval run (`20261012-084712`, 78.9%) showed two more ways the model fakes
+work when tools are offered:
+- an offer instead of the call: "I can check your GPU temperature right
+  now. Let me retrieve that…"
+- a false refusal: "I don't have access to real-time weather data"
+
+Both now count as claims. Grounding also accepts two spoken words run
+together ("vs code" → `vscode`). A required value made only of pointing
+words (`set_clipboard(text="That")` for "copy that") counts as missing.
+
+| | F-16 (qwen3, no router) | **F-17 final (`20261012-090126`)** |
+| :--- | :--- | :--- |
+| Overall | 80.0% | **84.2%** |
+| Tool selection | 80.3% | **86.4%** |
+| chat | 100% | 100% |
+| tool | 61.1% | **77.8%** |
+| slots | 80.0% | **85.0%** |
+| clarify | 70.0% | 60.0% → 70.0% after the pointing-word rule (subset re-run) |
+| First text p50 | 1.6 s | 3.1 s (the held opening plus forced calls) |
+
+Run-to-run variance on this GPU is real, despite temperature 0 and a fixed
+seed: four cases flipped between runs with an unchanged first-pass prompt.
+The prompt differs only in the date. Read single-case flips as noise.
+
+**Open:** fault 2 means most tool turns after a few chat turns pay the
+forced-decision latency. Worth a case family in `cases.toml` with history,
+and a look at whether stored tool turns should be replayed in history.
+
 ### F-16 · 2026-10-10 · Phase 2 result: qwen3:4b-instruct without the router is best; the router is right only for llama
 Full Phase 2 harness (never-assume, schema-constrained retry after a claimed
 action, wider claim detector, policy file), each model with the router on
@@ -338,6 +403,7 @@ battery (PRD §8.7).
 | 2026-10-10 | After a claimed action, retry with schema-constrained output (don't ask — constrain) | F-15 |
 | 2026-10-10 | Tool router on by default in `auto` mode: per model, from its template | F-14, F-16 |
 | 2026-10-10 | **Default model is now `qwen3:4b-instruct`** (approved by the user) | F-16 |
+| 2026-10-12 | Hold back a reply's opening until checked for false claims; detect reported results and invented live facts | F-17 |
 | 2026-10-09 | Bigger-model evals on Groq (free, no card) / Kaggle; AWS credits as backup | Free plan blocks GPUs; user prefers no card |
 
 ---
@@ -383,8 +449,8 @@ Work through in order. Record every result as a new finding.
 
 ## 6. Open threads
 
-- Spoken false claim before a forced retry (F-16) — hold back short replies
-  until classified?
+- History suppresses native tool calls (F-17, fault 2): add eval cases with
+  chat history; consider replaying stored tool calls in the context window.
 - Grow `cases.toml` from real 👎 traces; today's eval is hand-written only.
 - Local models kept (2026-10-10): `qwen3:4b-instruct` (default), `llama3.2`
   (previous default, kept for comparison), `nomic-embed-text` (memory). Removed to free disk:
