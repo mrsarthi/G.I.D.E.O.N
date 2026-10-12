@@ -37,6 +37,7 @@ from gideon.core.logs import get_logger
 from gideon.storage.db import DatabaseManager
 from gideon.storage.memory import TOOL_BOOKKEEPING_PREFIXES, VectorMemory
 from gideon.storage.models import PendingAction
+from gideon.storage.projects import mentioned_in
 from gideon.tools.registry import OLLAMA_TOOLS
 
 log = get_logger("gideon.brain.prompt")
@@ -112,7 +113,10 @@ def _describe_actions(actions: list[PendingAction]) -> str:
 
 
 def build_live_context_block(
-    db: DatabaseManager, memories: str, actions: list[PendingAction] | None = None
+    db: DatabaseManager,
+    memories: str,
+    actions: list[PendingAction] | None = None,
+    facts: str = "",
 ) -> str:
     """Volatile context. Goes at the END of the message list, never the start."""
     profile = db.get_user_profile()
@@ -138,6 +142,10 @@ def build_live_context_block(
             "instead of requesting the same action again]\n"
             f"{_describe_actions(actions)}"
         )
+
+    if facts:
+        # Fact memory (storage/projects.py): checked state, not conversation.
+        block += f"\n\n[KNOWN FACTS — the user's projects, as last checked]\n{facts}"
 
     if memories:
         block += f"\n\n[RELEVANT MEMORIES FROM PAST CONVERSATIONS]\n{memories}"
@@ -181,21 +189,29 @@ def build_context_window(db: DatabaseManager, session_id: str) -> list[dict[str,
     return context_messages
 
 
-def retrieve_memories(memory: VectorMemory | None, user_prompt: str) -> str:
-    """Recall relevant past messages, trimmed to the memory token reserve."""
+def retrieve_memories(memory: VectorMemory | None, user_prompt: str) -> tuple[str, list[str]]:
+    """Recall relevant past messages and facts, within the memory token reserve.
+
+    Returns (messages, facts): one query, split by what was recalled, so a
+    project summary is not presented as something said in a conversation.
+    """
     if memory is None or not user_prompt.strip():
-        return ""
+        return "", []
     try:
         results = memory.query(user_prompt)
     except Exception as exc:
         log.error("Memory retrieval failed: %s", exc)
-        return ""
+        return "", []
 
     snippets: list[str] = []
+    facts: list[str] = []
     used = 0
     for m in results:
         content = m.get("content", "").strip()
         if not content:
+            continue
+        if (m.get("metadata") or {}).get("kind"):
+            facts.append(content)
             continue
         cost = estimate_tokens(content)
         if used + cost > MEMORY_RESERVE:
@@ -203,7 +219,30 @@ def retrieve_memories(memory: VectorMemory | None, user_prompt: str) -> str:
         snippets.append(content)
         used += cost
 
-    return "\n---\n".join(snippets)
+    return "\n---\n".join(snippets), facts
+
+
+# At most this many project summaries per turn (each is ~80 tokens).
+MAX_PROJECT_FACTS = 3
+
+
+def project_facts(db: DatabaseManager, user_prompt: str, recalled: list[str]) -> str:
+    """Facts for this turn: projects the user named, then recalled ones.
+
+    A named project is matched by name in the message (storage/projects.py)
+    rather than left to vector recall: "open dumbpipe" must bring dumbpipe's
+    folder and state, deterministically.
+    """
+    try:
+        mentioned = [p.summary for p in mentioned_in(user_prompt, db.list_projects())]
+    except Exception as exc:
+        log.error("Project lookup failed: %s", exc)
+        mentioned = []
+    chosen: list[str] = []
+    for summary in [*mentioned, *recalled]:
+        if summary and summary not in chosen:
+            chosen.append(summary)
+    return "\n".join(f"- {s}" for s in chosen[:MAX_PROJECT_FACTS])
 
 
 def format_messages_for_ollama(
@@ -230,8 +269,9 @@ def format_messages_for_ollama(
       will check your RAM") instead of calling the tool — eval tool selection
       fell to 29%. Appended to the user's own message it calls tools normally.
     """
-    memories = retrieve_memories(memory, user_prompt)
-    live_block = build_live_context_block(db, memories, actions)
+    memories, recalled_facts = retrieve_memories(memory, user_prompt)
+    facts = project_facts(db, user_prompt, recalled_facts)
+    live_block = build_live_context_block(db, memories, actions, facts)
 
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": STATIC_SYSTEM_PROMPT}

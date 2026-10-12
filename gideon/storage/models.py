@@ -65,6 +65,26 @@ class PendingAction:
 
 
 @dataclass(slots=True)
+class Project:
+    """A code folder of the user's and its state when last refreshed."""
+
+    path: str
+    name: str
+    kind: str | None = None          # "Rust", "Python", ...
+    description: str | None = None   # first line of the README / manifest
+    branch: str | None = None
+    dirty: int | None = None         # uncommitted changes; None without git
+    last_commit_at: str | None = None
+    last_commit: str | None = None
+    modified_at: str | None = None
+    last_opened_at: str | None = None  # in VS Code
+    opened_with: str | None = None     # the app the user last asked for
+    summary: str = ""
+    refreshed_at: str = ""
+    missing: bool = False
+
+
+@dataclass(slots=True)
 class Note:
     note_id: int
     # note | task

@@ -39,6 +39,7 @@ from gideon.tools.validation import check_call, is_grounded
         ("spotify", "launch spoti", True),  # user's shortening
         ("chrome", "open calculator", False),
         ("vscode", "launch vs code for me", True),  # spoken words run together
+        ("vs code", "open chorrent in another vscode window", True),  # ...and the other way
     ],
 )
 def test_grounding(value, said, expected):
@@ -329,3 +330,13 @@ def test_an_honest_reply_streams_once_its_opening_is_checked():
 
 def test_the_gate_is_off_when_no_tools_were_offered():
     assert OpeningGate(active=False).feed("Yes boss. Notepad is now open.") == "Yes boss. Notepad is now open."
+
+
+def test_the_models_own_sentence_is_not_the_users_text():
+    """Eval 2026-10-12: "copy that to my clipboard" -> the model copied its own reply."""
+    check = check_call(
+        get_tool("set_clipboard"),
+        {"text": "Yes boss, I'll copy that to your clipboard right away."},
+        "copy that to my clipboard",
+    )
+    assert check.problem() == "ungrounded:text"

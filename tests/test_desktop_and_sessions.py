@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from gideon.brain.titles import PLACEHOLDER_TITLE, SessionTitler, clean_title, fallback_title
 from gideon.core.config import PORT
+from gideon.storage import projects
 from gideon.storage.db import get_db
 from gideon.tools import desktop, notes
 
@@ -77,12 +78,12 @@ def test_uninstallers_are_not_offered(tmp_path, monkeypatch):
 
 def test_search_roots_do_not_depend_on_the_working_directory(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(desktop, "SEARCH_ROOTS", [])
-    assert tmp_path not in desktop._search_roots()
+    monkeypatch.setattr(projects, "SEARCH_ROOTS", [])
+    assert tmp_path not in projects.default_search_roots()
 
 
 def test_search_roots_can_be_configured(monkeypatch, tmp_path):
-    monkeypatch.setattr(desktop, "SEARCH_ROOTS", [str(tmp_path)])
+    monkeypatch.setattr(projects, "SEARCH_ROOTS", [str(tmp_path)])
     (tmp_path / "needle-report.pdf").write_text("x")
     assert "needle-report.pdf" in desktop.search_files("needle")
 

@@ -17,12 +17,13 @@ import json
 import sqlite3
 import threading
 import uuid
+from dataclasses import fields
 from datetime import datetime
 from pathlib import Path
 
 from gideon.core.config import DB_PATH
 from gideon.core.logs import get_logger
-from gideon.storage.models import ChatMessage, Note, PendingAction, Reminder
+from gideon.storage.models import ChatMessage, Note, PendingAction, Project, Reminder
 
 log = get_logger("gideon.db")
 
@@ -36,6 +37,20 @@ def _inserted_id(cursor: sqlite3.Cursor) -> int:
 
 
 _REMINDER_COLUMNS = "reminder_id, text, remind_at, channel, chat_id, remote_synced"
+
+_PROJECT_FIELDS = tuple(f.name for f in fields(Project))
+_PROJECT_COLUMNS = ", ".join(_PROJECT_FIELDS)
+
+
+def _project_value(project: Project, field: str) -> object:
+    value = getattr(project, field)
+    return int(value) if isinstance(value, bool) else value
+
+
+def _project(row: tuple) -> Project:
+    project = Project(**dict(zip(_PROJECT_FIELDS, row, strict=True)))
+    project.missing = bool(project.missing)
+    return project
 
 
 def _reminder(row: tuple) -> Reminder:
@@ -263,6 +278,29 @@ class DatabaseManager:
                     text TEXT NOT NULL,
                     done INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL
+                )
+            """)
+
+            # Fact memory, first kind of fact: the user's code projects and
+            # their state when last looked at (storage/projects.py). Rebuilt
+            # from disk on every refresh except `opened_with`, which records
+            # the user's own choice of app.
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS projects (
+                    path TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    kind TEXT,
+                    description TEXT,
+                    branch TEXT,
+                    dirty INTEGER,
+                    last_commit_at TEXT,
+                    last_commit TEXT,
+                    modified_at TEXT,
+                    last_opened_at TEXT,
+                    opened_with TEXT,
+                    summary TEXT NOT NULL,
+                    refreshed_at TEXT NOT NULL,
+                    missing INTEGER NOT NULL DEFAULT 0
                 )
             """)
 
@@ -763,6 +801,45 @@ class DatabaseManager:
                 "UPDATE notes SET done = 1 WHERE note_id = ? AND done = 0", (note_id,)
             )
             return cursor.rowcount == 1
+
+    # ------------------------------------------------------------------
+    #  Projects (fact memory)
+    # ------------------------------------------------------------------
+    def upsert_project(self, project: Project) -> None:
+        """Store a freshly scanned project; keeps the user's `opened_with`."""
+        with self._lock, self.conn:
+            self.conn.execute(
+                f"INSERT INTO projects ({_PROJECT_COLUMNS}) "
+                f"VALUES ({', '.join('?' * len(_PROJECT_FIELDS))}) "
+                "ON CONFLICT(path) DO UPDATE SET "
+                + ", ".join(
+                    f"{f} = excluded.{f}" for f in _PROJECT_FIELDS if f not in ("path", "opened_with")
+                ),
+                tuple(_project_value(project, f) for f in _PROJECT_FIELDS),
+            )
+
+    def list_projects(self, include_missing: bool = False) -> list[Project]:
+        where = "" if include_missing else "WHERE missing = 0"
+        with self._lock:
+            rows = self.conn.execute(
+                f"SELECT {_PROJECT_COLUMNS} FROM projects {where} ORDER BY name COLLATE NOCASE"
+            ).fetchall()
+        return [_project(r) for r in rows]
+
+    def mark_projects_missing(self, keep: set[str]) -> list[str]:
+        """Flag every project not in `keep` as gone; returns the newly missing paths."""
+        with self._lock, self.conn:
+            gone = [
+                r[0]
+                for r in self.conn.execute("SELECT path FROM projects WHERE missing = 0")
+                if r[0] not in keep
+            ]
+            self.conn.executemany("UPDATE projects SET missing = 1 WHERE path = ?", [(p,) for p in gone])
+        return gone
+
+    def set_project_opener(self, path: str, app: str) -> None:
+        with self._lock, self.conn:
+            self.conn.execute("UPDATE projects SET opened_with = ? WHERE path = ?", (app, path))
 
     # ------------------------------------------------------------------
     #  Command audit

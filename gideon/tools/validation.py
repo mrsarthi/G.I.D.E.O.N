@@ -62,7 +62,8 @@ def is_informative(value: Any) -> bool:
 
 def is_grounded(value: Any, grounding: str, ignore: tuple[str, ...] = ()) -> bool:
     """Whether `value` plausibly came from the user's own words."""
-    ignored = {_stem(w) for w in _STOPWORDS | {w.lower() for w in ignore}}
+    # Pointing words ("copy that") are no evidence of where a value came from.
+    ignored = {_stem(w) for w in _STOPWORDS | _POINTERS | {w.lower() for w in ignore}}
     content = [w for w in _words(str(value)) if w not in ignored]
     if not content:
         # Nothing but filler ("the file") — it carries no information of its
@@ -70,10 +71,22 @@ def is_grounded(value: Any, grounding: str, ignore: tuple[str, ...] = ()) -> boo
         # separately.
         return True
     said = _words(grounding)
-    # Two spoken words run together: "vs code" -> "vscode".
-    sequence = _WORD.findall(grounding.lower())
-    said |= {a + b for a, b in zip(sequence, sequence[1:], strict=False)}
+    # Two words run together, either way round: the user said "vs code" and
+    # the model wrote "vscode", or the user typed "vscode" and the model
+    # wrote "vs code".
+    # Only words that count as evidence pair up: "copy that" run together is
+    # still no evidence.
+    said |= _pairs(_WORD.findall(grounding.lower()), ignored)
+    content += _pairs(_WORD.findall(str(value).lower()), ignored)
     return any(_same_word(word, heard) for word in content for heard in said)
+
+
+def _pairs(words: list[str], ignored: set[str]) -> set[str]:
+    return {
+        a + b
+        for a, b in zip(words, words[1:], strict=False)
+        if _stem(a) not in ignored and _stem(b) not in ignored
+    }
 
 
 def _same_word(value_word: str, said_word: str) -> bool:
@@ -126,7 +139,7 @@ def check_call(spec: ToolSpec, arguments: dict[str, Any], grounding: str) -> Slo
             if param.required:
                 result.missing.append(param)
             continue
-        if not param.grounded:
+        if not param.grounded and param.evidence is None:
             continue
         value = args[present[0]]
         if param.required and not is_informative(value):
@@ -134,7 +147,11 @@ def check_call(spec: ToolSpec, arguments: dict[str, Any], grounding: str) -> Slo
             # the value is present but says nothing, so it is still missing.
             result.missing.append(param)
             continue
-        if is_grounded(value, grounding, param.ground_ignore):
+        if param.evidence is not None:
+            said = _words(grounding)
+            if said & {_stem(w) for w in param.evidence.get(str(value).lower(), ())}:
+                continue
+        elif is_grounded(value, grounding, param.ground_ignore):
             continue
         if param.required:
             result.ungrounded.append(param)

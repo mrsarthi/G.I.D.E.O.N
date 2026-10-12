@@ -27,6 +27,7 @@ from gideon.interfaces.telegram import GideonTelegramDaemon
 from gideon.reminders.service import ReminderService
 from gideon.storage.db import DatabaseManager, close_db, get_db
 from gideon.storage.memory import VectorMemory
+from gideon.storage.projects import ProjectIndex, set_project_index
 from gideon.storage.remote_scheduler import RemoteScheduler, get_remote_scheduler
 from gideon.voice.tts import SpeechSynthesizer
 
@@ -52,6 +53,9 @@ class Services:
         self.agent = Agent(self.db, self.memory, self.approvals)
         self.titler = SessionTitler(self.db, publish=self.events.publish_threadsafe)
         self.power = PowerGuard(publish=self.events.publish_threadsafe)
+        # Fact memory about the user's code projects; launch_app reads it.
+        self.projects = ProjectIndex(self.db, self.memory)
+        set_project_index(self.projects)
         self.telegram = GideonTelegramDaemon(agent=self.agent)
         self.reminders = ReminderService(
             self.db,
@@ -87,6 +91,7 @@ class Services:
             # a GPU-resident model in place for even one request.
             asyncio.create_task(self.power.run()),
             asyncio.create_task(warm_up()),
+            asyncio.create_task(self.projects.run_refresh_loop()),
         ]
         await self.telegram.start()
         log.info("G.I.D.E.O.N online")
@@ -103,6 +108,7 @@ class Services:
             except asyncio.CancelledError:
                 pass
         self._tasks = []
+        set_project_index(None)
         self.remote.close()
         self.memory.close()
         self.speech.shutdown()

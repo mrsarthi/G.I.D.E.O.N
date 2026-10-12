@@ -10,9 +10,11 @@
 #   ask   = true             Gideon must ask a question instead of acting
 #   forbid = ["tool"]        ...and must not call these meanwhile
 #   history = [ { role = "user", content = "..." }, ... ]   prior turns
+#   expect = ["x|y"]         the reply must mention each (x or y): facts it was given
 #
 # Categories: tool (pick the right tool), slots (fill it correctly), chat
-# (no tool), clarify (never-assume, PRD §5.5), media (play vs. press play).
+# (no tool), clarify (never-assume, PRD §5.5), media (play vs. press play),
+# projects (windows, project folders, project knowledge).
 #
 # Grow this file from real traces: every 👎 or correction is a candidate case.
 
@@ -167,6 +169,64 @@ prompt = "open excel"
 tool = "launch_app"
 args = { app_name = "excel" }
 category = "slots"
+
+# Windows and project folders (the eval database knows dumbpipe, sendme and
+# chorrent — see EVAL_PROJECTS in gideon/evals/runner.py).
+[[case]]
+id = "window-new-vscode"
+prompt = "Can you open a new instance of vs code please"
+tool = "launch_app"
+args = { app_name = "code", window = "new" }
+category = "projects"
+
+[[case]]
+id = "project-in-vscode"
+prompt = "Can you open sendme in vs code please"
+tool = "launch_app"
+args = { app_name = "code", target = "sendme" }
+category = "projects"
+
+[[case]]
+id = "project-new-window"
+prompt = "Open dumbpipe in a new vs code window"
+tool = "launch_app"
+args = { app_name = "code", target = "dumbpipe", window = "new" }
+category = "projects"
+
+[[case]]
+id = "project-this-window"
+prompt = "Open dumbpipe in this vs code window"
+tool = "launch_app"
+args = { app_name = "code", target = "dumbpipe", window = "this" }
+category = "projects"
+
+[[case]]
+id = "project-another-window"
+prompt = "open chorrent in another vscode window"
+tool = "launch_app"
+args = { app_name = "code", target = "chorrent", window = "new" }
+category = "projects"
+
+[[case]]
+id = "project-explorer"
+prompt = "show me the sendme folder in file explorer"
+tool = "launch_app"
+args = { app_name = "explorer", target = "sendme" }
+category = "projects"
+
+[[case]]
+id = "project-branch"
+prompt = "which branch is dumbpipe on?"
+tool = "none"
+expect = ["add-version-flag"]
+category = "projects"
+
+[[case]]
+id = "project-dirty"
+prompt = "does sendme have uncommitted changes?"
+tool = "none"
+expect = ["3|three"]
+category = "projects"
 
 [[case]]
 id = "files-find"

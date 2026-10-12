@@ -22,7 +22,7 @@ already started to drift.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 _MISSING_VALUES = (None, "")
@@ -55,6 +55,10 @@ class Param:
     # count as evidence for this parameter ("reminder" for a reminder text).
     grounded: bool = False
     ground_ignore: tuple[str, ...] = ()
+    # For enum parameters: the words that justify each value. A value is
+    # grounded when the user said one of its words — "another window" for
+    # window="new" — rather than the value itself.
+    evidence: dict[str, tuple[str, ...]] | None = field(default=None, hash=False)
 
     def schema(self) -> dict[str, Any]:
         body: dict[str, Any] = {"type": self.type}

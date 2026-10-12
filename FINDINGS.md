@@ -32,6 +32,42 @@ not transfer to System 2; **ratios and causes will**.
 
 ## 2. Findings
 
+### F-18 · 2026-10-12 · Project knowledge and window control: 8/8 on the new cases, no regressions
+Built because of the user's requests: "open a new instance of vs code",
+"open sendme in vs code", "open dumbpipe in a new / this vs code window", and
+"knowledge about my projects in permanent memory".
+
+- **Fact memory, first kind: projects** (`storage/projects.py`). Projects
+  come from the search roots (marker files) and VS Code's history
+  (`workspaceStorage/*/workspace.json`, which names every folder ever opened).
+  On this machine: **35 projects in 24 s** (26 from VS Code). Git status on
+  big repos is most of that time, and it runs in the background every
+  30 min. Stored in SQLite and as summaries in Chroma (`kind="project"`).
+- **Named projects are injected directly, not left to vector recall.**
+  "open dumbpipe" must bring dumbpipe's folder every time; vector recall only
+  covers questions that name no project.
+- **`launch_app` gained `target` and `window`.** The model picks meanings;
+  `APP_PROFILES` maps them to fixed flags. VS Code runs as `Code.exe`
+  (`--new-window` / `--reuse-window`), never through `code.cmd`. `window` is
+  grounded by **evidence words** (new ← new/another/fresh/instance…, this ←
+  this/current/same); invented values are dropped.
+- **Eval:** 8 new `projects` cases (the user's own sentences, explorer, and
+  two knowledge questions scored with `expect`). The eval database is seeded
+  with three projects. Full run `20261012-095459`: **87.4% (90/103)**,
+  projects 8/8, chat 100%. The original 95 cases: 86.3% (F-17: 84.2%).
+- Grounding fixes found by the new cases:
+  - "vscode" typed by the user ↔ "vs code" written by the model
+  - pointing words ("that") were evidence, so `set_clipboard` could copy the
+    model's own sentence "Yes boss, I'll copy that…"
+
+  After both: clarify **80%** (best so far), projects 100%, slots 87.5%
+  (subset run).
+
+**Not done (next):**
+- verify the window opened (count VS Code windows before and after)
+- a deterministic fast path for "open X (in Y)"
+- personal facts (people, preferences) in the same fact store
+
 ### F-17 · 2026-10-12 · Live: qwen3 reports results it never produced — "Notepad is now open", invented weather
 User report: "open calculator" and "Open notepad" (quick-ask, 2026-10-10) got
 "Yes boss. The calculator is now open." with nothing opened. The traces for
@@ -404,6 +440,8 @@ battery (PRD §8.7).
 | 2026-10-10 | Tool router on by default in `auto` mode: per model, from its template | F-14, F-16 |
 | 2026-10-10 | **Default model is now `qwen3:4b-instruct`** (approved by the user) | F-16 |
 | 2026-10-12 | Hold back a reply's opening until checked for false claims; detect reported results and invented live facts | F-17 |
+| 2026-10-12 | Fact memory starts with projects: SQLite source of truth, summary in Chroma, named facts injected directly | F-18 |
+| 2026-10-12 | Apps get meanings (target, window) from the model; flags come from fixed profiles; VS Code via Code.exe | F-18 |
 | 2026-10-09 | Bigger-model evals on Groq (free, no card) / Kaggle; AWS credits as backup | Free plan blocks GPUs; user prefers no card |
 
 ---

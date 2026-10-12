@@ -92,6 +92,17 @@
    model on every write. Writes are filtered (filler and tool output are never
    indexed) and reads are distance-thresholded, so unrelated memories stop
    being injected into every turn.
+3. **Fact memory (`storage/projects.py`, `ProjectIndex`)** — durable knowledge
+   rather than recalled conversation (PRD §6.2). First kind of fact: the
+   user's code projects. Found under the search roots (folders with `.git`,
+   `Cargo.toml`, `package.json`, …) and in VS Code's history
+   (`workspaceStorage/*/workspace.json`). Each one's state (kind, README line,
+   git branch, uncommitted changes, last commit, last opened) goes to the
+   SQLite `projects` table and, as a one-paragraph summary, to ChromaDB with
+   `kind="project"`. Refreshed 60 s after start and every 30 minutes. A
+   project named in a message is put into the live context directly
+   (`[KNOWN FACTS]`); vector recall covers questions that name none. The
+   user's choice of app per project (`opened_with`) survives refreshes.
 
 ### C. Tools (`tools/`)
 Native Ollama JSON function calling. Each tool is declared once, beside its
@@ -107,7 +118,7 @@ precede `control_media`.
 | `get_system_status` | CPU/GPU/RAM/disk/battery telemetry |
 | `set_reminder` / `list_reminders` | Scheduling, fired by the reminder service |
 | `save_note` / `list_notes` / `complete_task` | Local notes and to-do list |
-| `launch_app` | Built-ins plus Start Menu shortcuts (desktop only, privileged) |
+| `launch_app` | Built-ins plus Start Menu shortcuts; new windows; project folders in VS Code/Explorer (desktop only, privileged) |
 | `search_files` | Filename search in Desktop/Documents/Downloads (or `GIDEON_SEARCH_ROOTS`) |
 | `search_web` | Headless DDG search with Instant-Answer/Wikipedia fallbacks |
 | `get_clipboard` / `set_clipboard` | Windows clipboard access |
@@ -127,6 +138,18 @@ Start Menu's shortcuts; what runs is a path G.I.D.E.O.N found itself, never
 text the model wrote. The previous fall-through to
 `subprocess.Popen(f"start {name}", shell=True)` was a shell injection with the
 model holding the pen.
+
+It also opens windows and project folders. The model fills two optional
+meanings, never a command line: `target` (a project name, resolved by
+`storage/projects.py` — ambiguous or unknown names come back as a question)
+and `window` (`new` / `this`). `APP_PROFILES` turns them into fixed flags:
+VS Code `--new-window` / `--reuse-window` plus the folder path, Explorer the
+folder, browsers `--new-window`. VS Code is started as `Code.exe`, not through
+`code.cmd`: arguments to a batch file are parsed by cmd.exe. `window` is
+checked with **evidence words** (`Param.evidence`): `new` needs the user to
+have said new/another/fresh/blank/instance…, `this` needs this/current/same;
+otherwise it is dropped and the app's default applies. "open sendme" with no
+app uses the app the user picked for it last time, or asks.
 
 #### Approvals and outside content (`brain/approvals.py`)
 Tools carry a policy in their declaration:
@@ -327,8 +350,9 @@ only module that knows how the pieces fit.
 | `gideon/core/context.py` | Per-turn channel/session (read by tools) |
 | `gideon/core/lifecycle.py` | Lets `POST /api/shutdown` stop uvicorn gracefully |
 | `gideon/storage/db.py` | Thread-safe SQLite manager + `get_db()` singleton |
-| `gideon/storage/memory.py` | `VectorMemory`: ChromaDB, CPU embedder, filtered both ways |
-| `gideon/storage/models.py` | Typed rows (`Reminder`, `ChatMessage`) |
+| `gideon/storage/memory.py` | `VectorMemory`: ChromaDB, CPU embedder, filtered both ways; facts via `upsert_fact` |
+| `gideon/storage/projects.py` | `ProjectIndex`: project discovery, git state, fact memory, name resolution |
+| `gideon/storage/models.py` | Typed rows (`Reminder`, `ChatMessage`, `Note`, `Project`) |
 | `gideon/storage/remote_scheduler.py` | Fail-soft mirror of reminders to the always-on node |
 | `gideon/tools/base.py` | `@tool` / `Param` declarations |
 | `gideon/tools/registry.py` | Schemas, ordering, channel policy, dispatch |
@@ -413,7 +437,10 @@ This halves the KV cache (~940MB → ~470MB at 8k context), leaving room for the
 | `GIDEON_REQUIRE_CONFIRMATION` | `1` | Shell commands from the model wait for approval |
 | `GIDEON_APPROVAL_TTL_MINUTES` | `15` | Unanswered approval requests expire |
 | `GIDEON_TOOL_RESULT_MAX_CHARS` | `6000` | Cap on tool output fed back to the model |
-| `GIDEON_SEARCH_ROOTS` | — | `;`-separated folders for file search |
+| `GIDEON_SEARCH_ROOTS` | — | `;`-separated folders for file search and project discovery |
+| `GIDEON_PROJECT_INDEX` | `1` | Keep project knowledge (fact memory) up to date |
+| `GIDEON_PROJECT_REFRESH_MINUTES` | `30` | How often project state is re-read |
+| `GIDEON_PROJECT_SCAN_DEPTH` | `4` | Folder levels searched below each root |
 | `GIDEON_ON_BATTERY` | `cpu` | Model on battery: `cpu`, `off`, or `gpu` (unsafe on this laptop) |
 | `GIDEON_BATTERY_THREADS` | half the logical cores | CPU threads for battery-mode inference |
 | `GIDEON_WARM_UP` | `1` | Load the model at engine start (mains power only) |

@@ -28,6 +28,8 @@ os.environ["GIDEON_WARM_UP"] = "0"
 # The router embeds with Ollama; agent tests must not need it. Router tests
 # turn it on explicitly with a fake embedder.
 os.environ["GIDEON_TOOL_ROUTER"] = "0"
+# Never scan the real disk or VS Code history from a test.
+os.environ["GIDEON_PROJECT_INDEX"] = "0"
 
 
 def pytest_sessionfinish(session, exitstatus):

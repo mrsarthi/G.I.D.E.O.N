@@ -282,7 +282,7 @@ Start at zero interruptions; lower the threshold as trust grows. The first proac
 - Embed documents → store vectors → fetch relevant chunks at query time → inject into context.
 - What *can* be fine-tuned is the model's **behavior around retrieval**: when to search, how to cite, how to say "I couldn't find it."
 - Build **RAG first**; fine-tune **last**.
-- Today's memory retrieves **past conversation messages** only (§13.4). Document RAG and **fact memory** ("my sister is Priya", preferences) are still to build.
+- Today's memory retrieves **past conversation messages** and **project facts** (§13.4). Document RAG and personal **fact memory** ("my sister is Priya", preferences) are still to build — projects are the first kind of fact and set the pattern: SQLite as the source of truth, a summary in vector memory, named facts injected directly.
 
 ### 6.3 Structured trace logger (from day one)
 
@@ -568,7 +568,7 @@ State of the interim build as of 2026-10-08 (Windows laptop, `llama3.2` 3B). Cod
 ### 13.2 Agent & tools
 
 - 22 tools declared once each with `@tool` (schema, argument aliases, channel policy, confirmation flags, intent triggers):
-  - **System:** status/telemetry, launch apps (built-ins + any Start Menu app), file search, clipboard, volume, media keys, guarded shell.
+  - **System:** status/telemetry, launch apps (built-ins + any Start Menu app; new windows; a project folder in VS Code or Explorer, in a new or the current window), file search, clipboard, volume, media keys, guarded shell.
   - **Information:** web search, weather, markets, Hacker News, IP lookup, Wolfram Alpha, document reading (PDF/text).
   - **Personal:** reminders (set/list), notes and to-do list (save/list/complete), YouTube Music.
 - **Tool gating** by keyword triggers (a stand-in for the router).
@@ -586,6 +586,7 @@ State of the interim build as of 2026-10-08 (Windows laptop, `llama3.2` 3B). Cod
 
 - SQLite: sessions, messages, profile, reminders, notes, approvals, audit.
 - ChromaDB vector recall of past messages (filtered on write, distance-thresholded on read), embedder pinned to CPU.
+- **Fact memory, first kind: projects.** The user's code projects (search folders + VS Code history) with their state — kind, git branch, uncommitted changes, last commit, last opened — in SQLite and as recallable summaries; refreshed every 30 minutes. A project named in a message reaches the model as a known fact.
 - Sessions auto-titled after the first exchange.
 
 ### 13.5 Reminders & delivery
@@ -602,7 +603,7 @@ State of the interim build as of 2026-10-08 (Windows laptop, `llama3.2` 3B). Cod
 
 ### 13.7 Engineering
 
-- 391 unit tests (model mocked), ruff + mypy clean, pre-commit hooks; tests run against an isolated data directory.
+- 512 unit tests (model mocked), ruff + mypy clean, pre-commit hooks; tests run against an isolated data directory.
 
 ### 13.8 Measurement (Phase 1)
 
@@ -613,7 +614,7 @@ State of the interim build as of 2026-10-08 (Windows laptop, `llama3.2` 3B). Cod
 
 ### 13.9 Not yet built
 
-Constrained (JSON-schema) decoding · standing approval rules · speech input (STT/wake word) · document RAG and fact memory · reasoner role · `draft_email`, `add_to_watchlist`, `get_project_metrics` · LAN thin-client auth · keyring secrets · Linux port.
+Constrained (JSON-schema) decoding · standing approval rules · speech input (STT/wake word) · document RAG and personal fact memory (people, preferences) · reasoner role · `draft_email`, `add_to_watchlist`, `get_project_metrics` · LAN thin-client auth · keyring secrets · Linux port.
 
 ---
 
@@ -745,3 +746,4 @@ These are **not** in the v1 build order (§12.3) and are not built until steps 1
 - **§15–16** — new risks (scope creep, platform lock-in, power delivery) and open questions 8–10.
 - **§18** — new "Beyond v1" section: home automation, background tasks, mobile client, presence and context, learning from corrections, personality — each with the hook the v1 harness must leave for it.
 - Formatting: inline LaTeX (`$$24/7$$`) replaced with plain text.
+- **§6.2, §13.2, §13.4** (2026-10-12) — fact memory started with project knowledge; `launch_app` opens new windows and project folders.

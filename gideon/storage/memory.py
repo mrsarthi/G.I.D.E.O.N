@@ -161,6 +161,29 @@ class VectorMemory:
         """Queue a write on the background thread (non-blocking)."""
         self._writer.submit(self.add, message_id, content, session_id, role, timestamp)
 
+    def upsert_fact(self, fact_id: str, text: str, kind: str, updated_at: str) -> bool:
+        """Store or replace a fact (fact memory, PRD §6.2), recallable like a message.
+
+        Facts are not conversation: they have an id of their own (`fact_id`,
+        e.g. "project:c:/…/dumbpipe") and are rewritten when the fact changes.
+        """
+        try:
+            self.collection.upsert(
+                ids=[f"fact_{fact_id}"],
+                documents=[text],
+                metadatas=[{"kind": kind, "fact_id": fact_id, "timestamp": updated_at}],
+            )
+            return True
+        except Exception as exc:
+            log.error("Fact write failed for %s: %s", fact_id, exc)
+            return False
+
+    def delete_fact(self, fact_id: str) -> None:
+        try:
+            self.collection.delete(ids=[f"fact_{fact_id}"])
+        except Exception as exc:
+            log.warning("Fact delete failed for %s: %s", fact_id, exc)
+
     def delete_session(self, session_id: str) -> None:
         """Remove every vector belonging to a deleted session."""
         try:

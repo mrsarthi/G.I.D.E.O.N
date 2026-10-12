@@ -11,7 +11,8 @@ needs to (Telegram, the always-on reminder node, cloud TTS).
 - **Talks back.** Replies stream into a 3D HUD and are spoken sentence by
   sentence while the model is still generating.
 - **Does things.** 22 tools: system telemetry, reminders, notes and a to-do
-  list, app launching (Start Menu apps), file search, web search, clipboard,
+  list, app launching (Start Menu apps, new windows, "open dumbpipe in a new
+  VS Code window"), file search, web search, clipboard,
   volume and media keys, YouTube Music, documents, weather, markets, Hacker
   News, IP lookup, Wolfram Alpha and a terminal.
 - **Asks before it acts.** Shell commands — and app launches after it has
@@ -19,7 +20,8 @@ needs to (Telegram, the always-on reminder node, cloud TTS).
 - **Is always reachable.** A tray icon and **Ctrl+Alt+G** quick-ask window,
   plus an optional Telegram bot.
 - **Remembers.** Conversations persist in SQLite; relevant past messages are
-  recalled through vector search.
+  recalled through vector search. It also knows your code projects — where
+  they are, their git branch and uncommitted changes — and keeps that current.
 - **Reminds you even when the PC is off**, via an optional Cloudflare Worker
   (`node/`).
 
@@ -73,6 +75,7 @@ you are most likely to want:
 | `GIDEON_DATA_DIR` | `data/` | Where the database, vector store and logs live |
 | `GIDEON_REQUIRE_CONFIRMATION` | `1` | Shell commands from the model need your approval |
 | `GIDEON_ON_BATTERY` | `cpu` | On battery the model runs CPU-only (`off` pauses it); the GPU is never used unplugged |
+| `GIDEON_PROJECT_INDEX` | `1` | Learn your projects (search folders + VS Code history) and their git state |
 | `GIDEON_TOOL_ROUTER` | `auto` | Offer only relevant tools: on for models that re-read the tool list each turn (llama), off for models that cache it (Qwen) |
 
 See [GIDEON_ARCHITECTURE.md](GIDEON_ARCHITECTURE.md) for the full list.

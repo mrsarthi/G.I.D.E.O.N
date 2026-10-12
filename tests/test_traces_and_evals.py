@@ -258,3 +258,12 @@ def test_scoring_chat_and_clarify():
     assert score(ask, _trace(reply="When should I remind you?")) == (True, "asked")
     assert score(ask, _trace([("set_reminder", {})], "Done.")) == (False, "guessed:set_reminder")
     assert score(ask, _trace(reply="Sure thing.")) == (False, "no_question")
+
+
+def test_expected_facts_accept_alternatives():
+    from gideon.evals.runner import Case, score
+
+    case = Case(id="x", prompt="does sendme have changes?", category="projects", tools=["none"], expect=["3|three"])
+    trace = {"detail": {"passes": [{"tool_calls": []}]}, "reply": "It has three uncommitted changes."}
+    assert score(case, trace) == (True, "ok")
+    assert score(case, {**trace, "reply": "It has some changes."}) == (False, "missing_fact")

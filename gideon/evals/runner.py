@@ -35,6 +35,8 @@ from gideon.brain.llm import chat_options
 from gideon.core.config import BASE_DIR, CHAT_MODEL, ROUTER_TOP_K, TOOL_ROUTER
 from gideon.core.power import on_battery
 from gideon.storage.db import get_db
+from gideon.storage.models import Project
+from gideon.storage.projects import summarize
 from gideon.tools.registry import get_tool
 
 CASES_FILE = BASE_DIR / "evals" / "cases.toml"
@@ -58,6 +60,7 @@ class Case:
     ask: bool = False
     forbid: list[str] = field(default_factory=list)
     history: list[dict[str, str]] = field(default_factory=list)
+    expect: list[str] = field(default_factory=list)  # the reply must mention each
 
 
 def load_cases(path: Path = CASES_FILE) -> list[Case]:
@@ -75,6 +78,7 @@ def load_cases(path: Path = CASES_FILE) -> list[Case]:
                 ask=bool(entry.get("ask", False)),
                 forbid=list(entry.get("forbid", [])),
                 history=list(entry.get("history", [])),
+                expect=[str(e) for e in entry.get("expect", [])],
             )
         )
     ids = [c.id for c in cases]
@@ -111,6 +115,30 @@ def fake_tool(name: str, args: dict[str, Any], channel: str) -> str:
     return f"Done: {name} completed successfully."
 
 
+# Project knowledge the eval database starts with, as the real index would
+# record it (storage/projects.py): named projects reach the prompt as facts.
+EVAL_PROJECTS = [
+    Project(
+        path=r"C:\Users\me\Desktop\Scripts\OPEN SOURCE\dumbpipe", name="dumbpipe", kind="Rust",
+        description="Connect two machines with a QUIC connection using iroh.",
+        branch="add-version-flag", dirty=0, last_commit_at="2026-10-12T08:51",
+        last_commit="adds --version flag", modified_at="2026-10-12T08:51",
+        last_opened_at="2026-10-12T09:00", refreshed_at="2026-10-12T09:30",
+    ),
+    Project(
+        path=r"C:\Users\me\Desktop\Scripts\OPEN SOURCE\sendme", name="sendme", kind="Rust",
+        branch="show-connection-type", dirty=3, last_commit_at="2026-10-11T18:02",
+        last_commit="show relay vs direct", modified_at="2026-10-12T08:40",
+        last_opened_at="2026-10-12T08:45", refreshed_at="2026-10-12T09:30",
+    ),
+    Project(
+        path=r"C:\Users\me\Desktop\Scripts\TBD\chorrent", name="chorrent", kind="Rust",
+        branch="main", dirty=31, last_commit_at="2026-10-01T22:10",
+        last_commit="tracker announce", refreshed_at="2026-10-12T09:30",
+    ),
+]
+
+
 # ---------------------------------------------------------------------------
 #  Scoring
 # ---------------------------------------------------------------------------
@@ -135,6 +163,15 @@ def slot_value(tool_name: str, slot: str, args: dict[str, Any]) -> Any:
 
 def score(case: Case, trace: dict[str, Any]) -> tuple[bool, str]:
     """(passed, reason). Reasons are stable labels used in the report."""
+    passed, reason = _score_decision(case, trace)
+    reply = (trace.get("reply") or "").lower()
+    # "3|three": any of the alternatives counts.
+    if passed and any(not any(alt in reply for alt in e.lower().split("|")) for e in case.expect):
+        return False, "missing_fact"
+    return passed, reason
+
+
+def _score_decision(case: Case, trace: dict[str, Any]) -> tuple[bool, str]:
     calls = [c for p in trace["detail"].get("passes", []) for c in p["tool_calls"]]
     names = [c["name"] for c in calls]
     reply = trace.get("reply") or ""
@@ -189,6 +226,9 @@ def run(model: str = CHAT_MODEL, only: list[str] | None = None, progress: bool =
         cases = [c for c in cases if c.id in wanted or c.category in wanted]
 
     db = get_db()
+    for project in EVAL_PROJECTS:
+        project.summary = summarize(project)
+        db.upsert_project(project)
     agent = Agent(db, None, model=model, tool_executor=fake_tool, option_overrides=EVAL_OPTIONS)
 
     # Load the model once so the first case's latency is not a cold load.

@@ -155,6 +155,13 @@ WEBVIEW_DIR = _state_path("webview", legacy_name=".webview")
 # Desktop, Documents and Downloads (and their OneDrive-backed versions).
 SEARCH_ROOTS = [p for p in _env("GIDEON_SEARCH_ROOTS", "").split(os.pathsep) if p.strip()]
 
+# Project knowledge (storage/projects.py): your code folders, found under the
+# search roots and in VS Code's history, with their git state, kept in fact
+# memory. Refreshed at start and then every PROJECT_REFRESH_MINUTES.
+PROJECT_INDEX = _env_flag("GIDEON_PROJECT_INDEX", True)
+PROJECT_REFRESH_MINUTES = _env_int("GIDEON_PROJECT_REFRESH_MINUTES", 30)
+PROJECT_SCAN_DEPTH = _env_int("GIDEON_PROJECT_SCAN_DEPTH", 4)
+
 FRONTEND_DIR = BASE_DIR / "frontend"
 STATIC_DIR = BASE_DIR / "static"
 AUDIO_DIR = STATIC_DIR / "audio"

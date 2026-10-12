@@ -20,12 +20,20 @@ import shutil
 import subprocess
 import threading
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 import psutil
 
-from gideon.core.config import SEARCH_ROOTS
 from gideon.core.logs import get_logger
+from gideon.storage.db import get_db
+from gideon.storage.models import Project
+from gideon.storage.projects import (
+    default_search_roots,
+    get_project_index,
+    resolve,
+    vscode_last_active_folder,
+)
 from gideon.tools.base import Param, tool
 
 log = get_logger("gideon.tools.desktop")
@@ -126,43 +134,244 @@ def _match_shortcut(name: str, shortcuts: dict[str, Path]) -> tuple[Path | None,
     return None, difflib.get_close_matches(name, list(shortcuts), n=3, cutoff=0.75)
 
 
-def _search_roots() -> list[Path]:
-    """Folders search_files walks: configured, or the usual user folders.
-
-    Not the working directory — that is wherever the engine happened to be
-    started, which made results depend on how G.I.D.E.O.N was launched.
-    """
-    if SEARCH_ROOTS:
-        return [Path(p).expanduser() for p in SEARCH_ROOTS]
-    home = Path.home()
-    folders = ("Desktop", "Documents", "Downloads")
-    # OneDrive folder backup moves Desktop/Documents under OneDrive.
-    candidates = [home / f for f in folders] + [home / "OneDrive" / f for f in folders]
-    return [p for p in candidates if p.is_dir()]
-
 _SKIP_DIRS = {"node_modules", "__pycache__", "venv", ".venv", "AppData", ".git"}
 _MAX_MATCHES = 10
 
 
+# ---------------------------------------------------------------------------
+#  Opening things in apps: windows and project folders
+# ---------------------------------------------------------------------------
+@dataclass(frozen=True)
+class AppProfile:
+    """What an app can do beyond starting: the flags for each request.
+
+    The model only ever chooses *meanings* (window="new", a project name);
+    the command line is built here from these fixed flags and a folder path
+    this module looked up itself.
+    """
+
+    label: str
+    new_window: tuple[str, ...] | None = None  # None: every start is a new window
+    reuse_window: tuple[str, ...] | None = None  # None: cannot target an open window
+    opens_folders: bool = False
+
+
+APP_PROFILES: dict[str, AppProfile] = {
+    "vscode": AppProfile("VS Code", ("--new-window",), ("--reuse-window",), opens_folders=True),
+    "explorer": AppProfile("File Explorer", opens_folders=True),
+    "chrome": AppProfile("Chrome", ("--new-window",)),
+    "edge": AppProfile("Edge", ("--new-window",)),
+    "firefox": AppProfile("Firefox", ("--new-window",)),
+}
+# Spoken names -> profile.
+_PROFILE_NAMES = {
+    "vscode": "vscode", "code": "vscode", "vs code": "vscode", "visual studio code": "vscode",
+    "explorer": "explorer", "file explorer": "explorer", "files": "explorer",
+    "chrome": "chrome", "google chrome": "chrome",
+    "edge": "edge", "microsoft edge": "edge",
+    "firefox": "firefox",
+}
+# Characters that never appear in a folder G.I.D.E.O.N would open, and that a
+# command interpreter would treat as syntax. Belt and braces: paths come from
+# the project index, and Code.exe is started directly, not through code.cmd.
+_UNSAFE_PATH = re.compile(r'["%^&|<>\r\n]')
+
+
+def _vscode_exe() -> str | None:
+    """Code.exe itself. `code` is a .cmd script, and arguments passed through a
+    batch file are parsed by cmd.exe — a path is safer handed to the exe."""
+    candidates = []
+    cli = shutil.which("code")
+    if cli:
+        candidates.append(Path(cli).resolve().parent.parent / "Code.exe")
+    for base in (os.environ.get("LOCALAPPDATA"), os.environ.get("PROGRAMFILES")):
+        if base:
+            candidates += [Path(base) / "Programs" / "Microsoft VS Code" / "Code.exe",
+                           Path(base) / "Microsoft VS Code" / "Code.exe"]
+    return next((str(c) for c in candidates if c.is_file()), None)
+
+
+def _app_exe(profile_id: str) -> str | None:
+    if profile_id == "vscode":
+        return _vscode_exe()
+    for target in KNOWN_APPS.get(profile_id, []):
+        if os.path.isabs(target) and os.path.exists(target):
+            return target
+        resolved = shutil.which(target)
+        if resolved:
+            return resolved
+    return None
+
+
+def _start(argv: list[str]) -> None:
+    env = {k: v for k, v in os.environ.items() if k != "ELECTRON_RUN_AS_NODE"}
+    subprocess.Popen(argv, env=env, creationflags=_NO_WINDOW)  # noqa: S603 - fixed exe, looked-up path
+
+
+def _project_lookup(name: str) -> tuple[Project | None, str | None]:
+    """(project, None) or (None, what to tell the model instead)."""
+    db = get_db()
+    projects = db.list_projects()
+    if not projects and (index := get_project_index()) is not None:
+        index.refresh()  # first use before the background scan has run
+        projects = db.list_projects()
+    found = resolve(name, projects)
+    if found.project is not None:
+        return found.project, None
+    if found.candidates:
+        options = "; ".join(f"{p.name} ({p.path})" for p in found.candidates)
+        return None, f"Not opened: '{name}' could mean several folders — {options}. Ask the user which one."
+    return None, (
+        f"Not opened: I don't know a project or folder called '{name}' "
+        f"(I know {len(projects)} under the search folders and in VS Code's history). "
+        "Ask the user for the exact folder name."
+    )
+
+
+def _open_project(profile_id: str, project: Project, window: str | None) -> str:
+    profile = APP_PROFILES[profile_id]
+    if not profile.opens_folders:
+        folder_apps = " or ".join(p.label for p in APP_PROFILES.values() if p.opens_folders)
+        return f"Not opened: {profile.label} cannot open a folder. {folder_apps} can — ask which the user wants."
+    if _UNSAFE_PATH.search(project.path) or not Path(project.path).is_dir():
+        return f"Not opened: the folder for {project.name} ({project.path}) is not available."
+    exe = _app_exe(profile_id)
+    if exe is None:
+        return f"{profile.label} doesn't seem to be installed, so I couldn't open {project.name}."
+
+    flags: tuple[str, ...] = ()
+    where = f"in {profile.label}"
+    if window == "new" and profile.new_window is not None:
+        flags, where = profile.new_window, f"in a new {profile.label} window"
+    elif window == "this":
+        if profile.reuse_window is None:
+            where = f"in {profile.label} (it opens a new window every time)"
+        else:
+            flags = profile.reuse_window
+            previous = vscode_last_active_folder() if profile_id == "vscode" else None
+            replaced = (
+                f", replacing {previous.name}"
+                if previous and os.path.normcase(str(previous)) != os.path.normcase(project.path)
+                else ""
+            )
+            where = f"in your most recently used {profile.label} window{replaced}"
+
+    try:
+        _start([exe, *flags, project.path])
+    except OSError as exc:
+        return f"{profile.label} failed to open {project.name}: {exc}"
+    db = get_db()
+    db.set_project_opener(project.path, profile.label)
+    if (index := get_project_index()) is not None:
+        threading.Thread(target=index.refresh_one, args=(project.path,), daemon=True).start()
+    log.info("Opened %s %s (%s)", project.path, where, " ".join(flags) or "default window")
+    return f"Opened {project.name} ({project.path}) {where}."
+
+
+def _new_window(profile_id: str) -> str | None:
+    """A new, empty window of an app that can make one; None if it can't."""
+    profile = APP_PROFILES.get(profile_id)
+    if profile is None or profile.new_window is None:
+        return None
+    exe = _app_exe(profile_id)
+    if exe is None:
+        return f"{profile.label} doesn't seem to be installed."
+    try:
+        _start([exe, *profile.new_window])
+    except OSError as exc:
+        return f"{profile.label} failed to open a new window: {exc}"
+    return f"Opened a new, empty {profile.label} window."
+
+
+def _app_for_project(project: Project) -> str:
+    """The app to open a project in when the user named none."""
+    remembered = next(
+        (pid for pid, p in APP_PROFILES.items() if p.label == project.opened_with), None
+    )
+    if remembered is not None:
+        return remembered
+    return ""
+
+
+_WINDOW_EVIDENCE = {
+    "new": ("new", "another", "fresh", "blank", "empty", "separate", "extra", "second", "instance"),
+    "this": ("this", "current", "same", "existing", "reuse"),
+}
+
+
 @tool(
     "launch_app",
-    "ONLY call this when the user explicitly gives a direct command to open or run a desktop application (e.g. 'open notepad', 'launch calc'). NEVER call this to check the time, date, or answer general questions.",
+    "ONLY call this when the user explicitly gives a direct command to open or run a desktop application, "
+    "or to open one of their project folders in an app (e.g. 'open notepad', 'open dumbpipe in vs code'). "
+    "NEVER call this to check the time, date, or answer general questions.",
     Param(
         "app_name",
-        "Friendly name of the application to start, e.g. 'notepad', 'chrome', 'spotify'.",
+        "Friendly name of the application to start, e.g. 'notepad', 'chrome', 'vs code'.",
         required=True,
         aliases=("app", "name"),
         grounded=True,
         ground_ignore=("app", "application", "program", "open", "launch", "start"),
     ),
+    Param(
+        "target",
+        "A project or folder to open in the app, as the user named it (e.g. 'dumbpipe'). Omit if none.",
+        aliases=("project", "folder", "path"),
+        default=None,
+        grounded=True,
+        ground_ignore=("folder", "project", "directory", "repo", "open", "in", "code", "vs"),
+    ),
+    Param(
+        "window",
+        "'new' ONLY if the user asks for a new/another window or instance; 'this' ONLY if they say "
+        "this/current/same window. Omit otherwise.",
+        enum=("new", "this"),
+        default=None,
+        evidence=_WINDOW_EVIDENCE,
+        normalize=lambda v: str(v).strip().lower() if v else None,
+    ),
     # Launching programs is local-only: a remote channel never gets it.
     blocked_channels={"telegram"},
     privileged=True,
-    triggers={"open", "launch", "run", "start", "close", "app", "application"},
+    triggers={"open", "launch", "run", "start", "close", "app", "application", "window", "instance"},
 )
-def launch_app(app_name: str) -> str:
-    """Start a built-in or Start Menu application by friendly name."""
+def launch_app(app_name: str, target: str | None = None, window: str | None = None) -> str:
+    """Start an app, optionally in a new window or onto one of the user's project folders."""
     clean_name = " ".join((app_name or "").strip().lower().split())
+    window = window if window in ("new", "this") else None
+    profile_id = _PROFILE_NAMES.get(clean_name)
+
+    if target:
+        if profile_id is None and clean_name not in KNOWN_APPS:
+            return f"Not opened: {app_name} is not an app I can open folders with. Ask which app to use."
+        project, problem = _project_lookup(target)
+        if project is None:
+            return problem or "Not opened."
+        if profile_id is None:
+            return f"Not opened: {app_name} cannot open a folder. VS Code or File Explorer can — ask which."
+        return _open_project(profile_id, project, window)
+
+    # "open dumbpipe": a project named where the app should be.
+    if profile_id is None and clean_name not in KNOWN_APPS and _APP_NAME_OK.match(clean_name):
+        projects = get_db().list_projects()
+        found = resolve(clean_name, projects)
+        if found.project is not None and not _match_shortcut(clean_name, installed_shortcuts())[0]:
+            remembered = _app_for_project(found.project)
+            if remembered:
+                return _open_project(remembered, found.project, window) + " (the app you used for it last time)"
+            return (
+                f"Not opened: {found.project.name} is a project folder ({found.project.path}). "
+                "Ask the user which app to open it in — VS Code or File Explorer."
+            )
+
+    if window == "new" and profile_id is not None:
+        made = _new_window(profile_id)
+        if made is not None:
+            return made
+    return _launch(app_name, clean_name)
+
+
+def _launch(app_name: str, clean_name: str) -> str:
+    """Start a built-in or Start Menu application by friendly name."""
     targets = KNOWN_APPS.get(clean_name)
 
     if not targets:
@@ -297,7 +506,7 @@ def search_files(query: str, search_path: str | None = None) -> str:
     if search_path:
         roots = [Path(search_path).expanduser().resolve()]
     else:
-        roots = [r.resolve() for r in _search_roots() if r.exists()]
+        roots = [r.resolve() for r in default_search_roots() if r.exists()]
 
     matches: list[str] = []
     for root in roots:
