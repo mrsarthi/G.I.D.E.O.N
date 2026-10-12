@@ -213,22 +213,38 @@ def _kind(path: Path) -> str | None:
 
 
 def _description(path: Path) -> str | None:
-    """The first line of prose in the README: no headings, badges or HTML."""
+    """The README's first paragraph of prose: no headings, badges or HTML.
+
+    A paragraph, not a line: READMEs wrap mid-sentence ("This is an example
+    application using iroh with" was sendme's first line).
+    """
     for name in _README_NAMES:
         readme = path / name
         if not readme.is_file():
             continue
         try:
             with readme.open(encoding="utf-8", errors="replace") as handle:
-                for _, line in zip(range(60), handle, strict=False):
-                    text = line.strip()
-                    if not text or text.startswith(("#", "[!", "![", "<", "=", "-", "|", "```")):
-                        continue
-                    text = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", text)  # links -> their text
-                    text = re.sub(r"[*_`]", "", text)
-                    return text[:_DESCRIPTION_CHARS].rstrip()
+                lines = [line.strip() for _, line in zip(range(80), handle, strict=False)]
         except OSError:
             continue
+        paragraph: list[str] = []
+        for text in lines:
+            if text.startswith(("#", "[!", "![", "<", "=", "-", "|", "```")):
+                text = ""
+            if not text:
+                if paragraph:
+                    break
+                continue
+            paragraph.append(text)
+        if not paragraph:
+            continue
+        prose = " ".join(paragraph)
+        prose = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", prose)  # links -> their text
+        prose = re.sub(r"[*_`]", "", prose)
+        if len(prose) <= _DESCRIPTION_CHARS:
+            return prose
+        cut = prose[:_DESCRIPTION_CHARS].rsplit(" ", 1)[0].rstrip(",;:")
+        return cut + "…"
     return None
 
 
