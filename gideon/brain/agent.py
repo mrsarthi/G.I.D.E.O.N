@@ -26,7 +26,12 @@ from typing import Any
 import ollama
 
 from gideon.brain.approvals import ApprovalQueue, action_payload
-from gideon.brain.intent import claims_action, correct_media_tool_choice, should_offer_tools
+from gideon.brain.intent import (
+    claims_action,
+    correct_media_tool_choice,
+    should_offer_tools,
+    strip_claims,
+)
 from gideon.brain.llm import BATTERY_PAUSED_REPLY, chat_options, model_paused, thinking_kwargs
 from gideon.brain.prompt import (
     build_context_window,
@@ -73,6 +78,9 @@ CLAIMED_ACTION_NUDGE = (
     "call the tool now. If a detail is missing, ask the user for it in one short "
     "question. Do not say it is done unless a tool has done it."
 )
+# Tools start a refusal this way ("Not opened: …", "Not run: …"): the tool
+# was called but did nothing.
+REFUSAL_PREFIX = "Not "
 # How much recent conversation counts as "what the user said" when checking
 # that tool arguments were not invented (tools/validation.py).
 GROUNDING_MESSAGES = 6
@@ -85,8 +93,8 @@ _SENTENCE_END = re.compile(r"[.!?](?:\s|$)")
 class OpeningGate:
     """Holds back the start of a reply until it is known not to be a false claim.
 
-    When tools were offered and the model answers in prose instead, that prose
-    is often "Yes boss. Notepad is now open." or an invented forecast — and
+    Until a tool has acted, a reply that reports doing something is often
+    false — "Yes boss. Notepad is now open." or an invented forecast — and
     once streamed it is spoken, so the forced decision's real answer arrives
     as a contradiction. Claims come first, so holding the opening sentence or
     two (cut at a sentence end once OPENING_MIN_CHARS have arrived, or at
@@ -257,12 +265,19 @@ class Agent:
         # Set once a tool returns text from outside the user's control.
         untrusted_seen = False
         ran_tool = requested_approval = blocked_any = False
+        # A tool ran and did not refuse ("Not opened: …", "Not run: …"). Until
+        # then, any reply that reports success is false (seen live: a blocked
+        # call followed by "The sendme folder is now open in VS Code").
+        acted = False
         nudged = False
         # What the user actually said, recently: tool arguments must come from
         # here, not from the model's imagination (never-assume, PRD §5.5).
         grounding = "\n".join(
             [m["content"] for m in context_messages[-GROUNDING_MESSAGES:]] + [user_prompt]
         )
+        # What the forced decision routes on: this message and the exchange
+        # before it, so a short answer ("in file explorer") keeps its subject.
+        routing_text = "\n".join([m["content"] for m in context_messages[-3:-1]] + [user_prompt])
 
         # Read by tools (set_reminder) to learn where this turn came from.
         current_channel.set(channel)
@@ -290,10 +305,9 @@ class Agent:
             trace.placement = "cpu" if options.get("num_gpu") == 0 else "gpu"
             record = trace.start_pass()
             stats: dict[str, Any] = {}
-            # Only a first answer can be a false claim of a tool's work.
-            gate = OpeningGate(
-                offer_tools and not nudged and not (ran_tool or requested_approval or blocked_any)
-            )
+            # Armed until a tool has acted, tools offered or not: a reply to a
+            # message gating misjudged ("vs code please") can claim too.
+            gate = OpeningGate(not acted and not requested_approval)
             try:
                 stream = self._chat(
                     model=self.model,
@@ -392,7 +406,11 @@ class Agent:
                 # model=None: in "auto" mode this one-off decision call is
                 # routed even for models that cache the full list — nothing is
                 # cached for it, and a short catalog decides better.
-                candidates = offered_tools or self.router.select(user_prompt, channel_tools)
+                # Routed on the last exchange too: "Vs code please" means
+                # nothing alone (the retry once picked set_clipboard for it).
+                candidates = self.router.select(
+                    routing_text, offered_tools or channel_tools
+                )
                 forced = self._force_decision(messages, full_ans, candidates, options)
                 if forced is not None and forced["tool"] == "ask_user":
                     question = str(forced.get("question") or "").strip()
@@ -426,9 +444,18 @@ class Agent:
                         {"name": forced["tool"], "arguments": forced["arguments"], "source": "forced"}
                     ]
                 # Otherwise: no usable decision; the reply stands as given.
-            # Anything still held (no decision was made) is the answer after all.
-            if gate.active and (shown := gate.release()):
-                yield shown
+            # Anything still held (no decision was made) is the answer after all
+            # — minus any sentence claiming what no tool did.
+            if gate.active:
+                held_text = gate.release()
+                if gate.claimed:
+                    honest = strip_claims(held_text)
+                    log.info("Cut a false claim from the reply: %r", held_text[:120])
+                    trace.stages["claim_cut"] = trace.elapsed_ms()
+                    full_ans = honest
+                    held_text = honest
+                if held_text:
+                    yield held_text
 
             # No tools requested: this was the final answer.
             if not collected_tool_calls:
@@ -490,6 +517,7 @@ class Agent:
                 else:
                     tool_result = self._execute(name, args, channel)
                     ran_tool = True
+                    acted = acted or not tool_result.lstrip().startswith(REFUSAL_PREFIX)
 
                 trace.tool_call(
                     record,

@@ -165,7 +165,7 @@ _ACTION_VERBS = (
     r"check|set|add|open|launch|play|search|look|copy|remind|save|note|mute|"
     r"unmute|turn|run|read|find|pull|get|fetch|start|create|put|mark|list|show|"
     r"schedule|queue|skip|pause|resume|lower|raise|make|made|write|written|jot|"
-    r"retriev|grab|bring"
+    r"retriev|grab|bring|trigger|switch|send|sent|load|skip|stop|resum|adjust|chang|clos|launch|press|hit"
 )
 # Things only a tool could know. "Here are your reminders: 1. Meeting at 3pm…"
 # without a tool call is invented data (measured on qwen3:4b-instruct, F-15).
@@ -238,3 +238,27 @@ def claims_action(reply: str) -> bool:
     """Whether a reply promises or reports doing something a tool would do."""
     text = (reply or "").strip()
     return bool(text) and any(p.search(text) for p in _CLAIM_PATTERNS)
+
+
+# Said instead when a reply was nothing but a false claim.
+NOT_DONE_REPLY = "I haven't done that yet — it didn't go through."
+_SENTENCES = re.compile(r"[^.!?\n]+(?:[.!?]+|\n|$)")
+# What is left after cutting a claim, if it says nothing ("Yes boss.").
+_FILLER_ONLY = re.compile(
+    r"^\W*(?:(?:yes|sure|certainly|okay|ok|alright|right|done|of\s+course|boss|sir|"
+    r"ready\s+for\s+your\s+work)\W*)*$",
+    re.IGNORECASE,
+)
+
+
+def strip_claims(reply: str) -> str:
+    """The reply without its sentences claiming what no tool did.
+
+    Used when a claim was held back and nothing could replace it — a forced
+    decision was already spent, or a tool refused. The rest (usually a
+    question) is kept; a reply that was only a claim becomes NOT_DONE_REPLY.
+    """
+    sentences = [s.strip() for s in _SENTENCES.findall(reply or "") if s.strip()]
+    # Filler goes with the claim it introduced ("Yes boss. <claim>").
+    kept = [s for s in sentences if not claims_action(s) and not _FILLER_ONLY.match(s)]
+    return " ".join(kept) or NOT_DONE_REPLY

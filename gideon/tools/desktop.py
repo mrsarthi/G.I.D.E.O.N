@@ -237,7 +237,7 @@ def _open_project(profile_id: str, project: Project, window: str | None) -> str:
         return f"Not opened: the folder for {project.name} ({project.path}) is not available."
     exe = _app_exe(profile_id)
     if exe is None:
-        return f"{profile.label} doesn't seem to be installed, so I couldn't open {project.name}."
+        return f"Not opened: {profile.label} doesn't seem to be installed, so I couldn't open {project.name}."
 
     flags: tuple[str, ...] = ()
     where = f"in {profile.label}"
@@ -259,7 +259,7 @@ def _open_project(profile_id: str, project: Project, window: str | None) -> str:
     try:
         _start([exe, *flags, project.path])
     except OSError as exc:
-        return f"{profile.label} failed to open {project.name}: {exc}"
+        return f"Not opened: {profile.label} failed to open {project.name}: {exc}"
     db = get_db()
     db.set_project_opener(project.path, profile.label)
     if (index := get_project_index()) is not None:
@@ -275,11 +275,11 @@ def _new_window(profile_id: str) -> str | None:
         return None
     exe = _app_exe(profile_id)
     if exe is None:
-        return f"{profile.label} doesn't seem to be installed."
+        return f"Not opened: {profile.label} doesn't seem to be installed."
     try:
         _start([exe, *profile.new_window])
     except OSError as exc:
-        return f"{profile.label} failed to open a new window: {exc}"
+        return f"Not opened: {profile.label} failed to open a new window: {exc}"
     return f"Opened a new, empty {profile.label} window."
 
 
@@ -336,32 +336,39 @@ _WINDOW_EVIDENCE = {
 )
 def launch_app(app_name: str, target: str | None = None, window: str | None = None) -> str:
     """Start an app, optionally in a new window or onto one of the user's project folders."""
-    clean_name = " ".join((app_name or "").strip().lower().split())
+    # "file_explorer", "vs-code": small models write names as identifiers.
+    clean_name = " ".join(re.sub(r"[_-]+", " ", app_name or "").strip().lower().split())
     window = window if window in ("new", "this") else None
     profile_id = _PROFILE_NAMES.get(clean_name)
 
+    is_app = profile_id is not None or clean_name in KNOWN_APPS
+
+    # "open sendme": the project named where the app should be. Small models
+    # also send app_name="sendme" with target=<sendme's folder> (seen live).
+    if not is_app and _APP_NAME_OK.match(clean_name) and not _match_shortcut(clean_name, installed_shortcuts())[0]:
+        named = resolve(clean_name, get_db().list_projects()).project
+        if named is not None:
+            if target:
+                named, problem = _project_lookup(target)
+                if named is None:
+                    return problem or "Not opened."
+            remembered = _app_for_project(named)
+            if remembered:
+                return _open_project(remembered, named, window) + " (the app you used for it last time)"
+            return (
+                f"Not opened: no app was named for {named.name}, a project folder ({named.path}). "
+                "Ask the user which app to open it in — VS Code or File Explorer."
+            )
+
     if target:
-        if profile_id is None and clean_name not in KNOWN_APPS:
+        if not is_app:
             return f"Not opened: {app_name} is not an app I can open folders with. Ask which app to use."
-        project, problem = _project_lookup(target)
-        if project is None:
+        found, problem = _project_lookup(target)
+        if found is None:
             return problem or "Not opened."
         if profile_id is None:
             return f"Not opened: {app_name} cannot open a folder. VS Code or File Explorer can — ask which."
-        return _open_project(profile_id, project, window)
-
-    # "open dumbpipe": a project named where the app should be.
-    if profile_id is None and clean_name not in KNOWN_APPS and _APP_NAME_OK.match(clean_name):
-        projects = get_db().list_projects()
-        found = resolve(clean_name, projects)
-        if found.project is not None and not _match_shortcut(clean_name, installed_shortcuts())[0]:
-            remembered = _app_for_project(found.project)
-            if remembered:
-                return _open_project(remembered, found.project, window) + " (the app you used for it last time)"
-            return (
-                f"Not opened: {found.project.name} is a project folder ({found.project.path}). "
-                "Ask the user which app to open it in — VS Code or File Explorer."
-            )
+        return _open_project(profile_id, found, window)
 
     if window == "new" and profile_id is not None:
         made = _new_window(profile_id)
@@ -377,7 +384,7 @@ def _launch(app_name: str, clean_name: str) -> str:
     if not targets:
         if not _APP_NAME_OK.match(clean_name):
             log.warning("Refused app name that is not a plain name: %r", app_name)
-            return f"'{app_name}' is not on the approved application list, so I won't launch it."
+            return f"Not opened: '{app_name}' is not on the approved application list, so I won't launch it."
 
         shortcut, candidates = _match_shortcut(clean_name, installed_shortcuts())
         if shortcut is not None:
@@ -387,16 +394,16 @@ def _launch(app_name: str, clean_name: str) -> str:
                 return f"Launched {shortcut.stem} successfully."
             except OSError as exc:
                 log.warning("Start Menu shortcut %s failed: %s", shortcut, exc)
-                return f"I found {shortcut.stem} in the Start Menu but it failed to start: {exc}"
+                return f"Not opened: I found {shortcut.stem} in the Start Menu but it failed to start: {exc}"
 
         log.warning("Refused to launch unlisted app: %r", app_name)
         if candidates:
             return (
-                f"'{app_name}' is not on the approved application list as written. "
+                f"Not opened: '{app_name}' is not on the approved application list as written. "
                 f"Did you mean: {', '.join(candidates)}?"
             )
         return (
-            f"'{app_name}' is not on the approved application list, so I won't launch it. "
+            f"Not opened: '{app_name}' is not on the approved application list, so I won't launch it. "
             f"I can open anything in the Start Menu, plus: {', '.join(sorted(set(KNOWN_APPS)))}."
         )
 
@@ -422,7 +429,7 @@ def _launch(app_name: str, clean_name: str) -> str:
             log.debug("Launch candidate %r failed: %s", target, exc)
             continue
 
-    return f"'{clean_name}' is approved but I couldn't find it installed on this system."
+    return f"Not opened: '{clean_name}' is approved but I couldn't find it installed on this system."
 
 
 @tool(

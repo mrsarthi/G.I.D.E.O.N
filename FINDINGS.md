@@ -32,6 +32,44 @@ not transfer to System 2; **ratios and causes will**.
 
 ## 2. Findings
 
+### F-19 · 2026-10-12 · Live red flag: "The sendme folder is now open in VS Code", and nothing opened
+User session (quick-ask, 18:28):
+
+| Turn | What went wrong |
+| :--- | :--- |
+| "Open sendme" | `launch_app(app_name="sendme", target=<sendme's path>)`; the launcher refused it as "not an app" instead of seeing a project with no app named |
+| "Open it in file explorer" | No native call; the forced retry asked a confused question |
+| "Vs code please" | The forced retry picked **`set_clipboard`** (routed on "Vs code please" alone, among all 22 tools). It was blocked, then the **next** pass said "The sendme folder is now open in Visual Studio Code" — spoken, false |
+
+Root causes and fixes:
+1. **The gate covered only the first answer.** Any block or refusal turned it
+   off. It is now armed until a tool has **acted**: it ran and did not answer
+   "Not …". Launcher refusals now all start with "Not opened:". It is also
+   armed when gating withheld tools ("vs code please" offers none).
+2. **A held claim with no decision left** (already forced once, or after a
+   refusal) is cut sentence by sentence (`strip_claims`). The question that
+   follows is kept; a bare claim becomes "I haven't done that yet — it didn't
+   go through."
+3. **Forced retry routing** now uses the last exchange plus the message, not
+   the message alone.
+4. **Launcher:** a project named as the app (with or without its path as the
+   target) means "no app named" (remembered app, else ask). `file_explorer`
+   and `vs-code` are normalised.
+
+Replay of the same conversation (real model, real launcher, launches
+recorded): no false claims in 2 runs. "Open it in file explorer" opens sendme
+in Explorer; "open sendme in vs code" gives
+`Code.exe "…\OPEN SOURCE\sendme"`.
+
+Still weak:
+- "Open sendme" alone gets a model-invented app ("vs code"), which
+  never-assume blocks, so G.I.D.E.O.N asks; correct but roundabout.
+- A bare follow-up ("Vs code please") can drop the folder from the decision:
+  it then just launches VS Code, honestly reported.
+
+Replay caveat: the Start Menu path (`os.startfile`) was not intercepted, so
+one replay opened a real VS Code window. Replays must patch it too.
+
 ### F-18 · 2026-10-12 · Project knowledge and window control: 8/8 on the new cases, no regressions
 Built because of the user's requests: "open a new instance of vs code",
 "open sendme in vs code", "open dumbpipe in a new / this vs code window", and
@@ -442,6 +480,7 @@ battery (PRD §8.7).
 | 2026-10-12 | Hold back a reply's opening until checked for false claims; detect reported results and invented live facts | F-17 |
 | 2026-10-12 | Fact memory starts with projects: SQLite source of truth, summary in Chroma, named facts injected directly | F-18 |
 | 2026-10-12 | Apps get meanings (target, window) from the model; flags come from fixed profiles; VS Code via Code.exe | F-18 |
+| 2026-10-12 | False-claim gate armed until a tool acts (not just on the first pass); unreplaceable claims are cut | F-19 |
 | 2026-10-09 | Bigger-model evals on Groq (free, no card) / Kaggle; AWS credits as backup | Free plan blocks GPUs; user prefers no card |
 
 ---

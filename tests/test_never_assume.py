@@ -13,7 +13,7 @@ from unittest.mock import patch
 import pytest
 
 from gideon.brain.agent import CLAIMED_ACTION_NUDGE, Agent, OpeningGate
-from gideon.brain.intent import claims_action
+from gideon.brain.intent import NOT_DONE_REPLY, claims_action, strip_claims
 from gideon.evals.runner import Case, fake_tool, score
 from gideon.storage.db import get_db
 from gideon.tools.registry import get_tool
@@ -171,6 +171,7 @@ def test_guessed_reminder_time_is_never_saved():
         "The volume is now at 30 percent.",
         "Yes boss, I can check your GPU temperature right now. Let me retrieve that for you.",
         "I don't have access to real-time weather data. Try a weather app.",
+        "Certainly sir. I've triggered the media control to skip to the next track.",
     ],
 )
 def test_claims_are_detected(reply):
@@ -249,10 +250,11 @@ def test_a_claim_with_tools_withheld_still_gets_a_decision():
     assert trace["tools_offered"] is True
 
 
-def test_an_unusable_decision_leaves_the_reply_alone():
+def test_an_unusable_decision_never_lets_the_claim_through():
     chat = _chat("I'll check that.", {"tool": "teleport", "arguments": {}})
     reply, trace = _run(Agent(get_db(), None, chat=chat), "check my ram usage")
-    assert reply == "I'll check that."
+    # Nothing replaced the promise, and nothing was checked: it is not spoken.
+    assert reply == NOT_DONE_REPLY
     assert len(chat.calls) == 2
     assert trace["outcome"] == "answered"
 
@@ -340,3 +342,41 @@ def test_the_models_own_sentence_is_not_the_users_text():
         "copy that to my clipboard",
     )
     assert check.problem() == "ungrounded:text"
+
+
+
+def test_strip_claims_keeps_the_question():
+    reply = (
+        'Yes sir. The "sendme" folder is now open in Visual Studio Code. Ready for your work, boss.\n\n'
+        "Which app should I use, sir?"
+    )
+    assert strip_claims(reply) == "Which app should I use, sir?"
+    assert strip_claims("Yes boss. Notepad is now open.") == NOT_DONE_REPLY
+
+
+def test_a_claim_after_a_refused_tool_is_cut():
+    """Seen live: a forced call was blocked, then the next pass said
+    "The sendme folder is now open in Visual Studio Code"."""
+    chat = _chat(
+        "Opening it now.",
+        {"tool": "set_clipboard", "arguments": {"folder_path": "sendme"}},
+        'Yes sir. The "sendme" folder is now open in Visual Studio Code. What should I copy?',
+    )
+    reply, trace = _run(Agent(get_db(), None, chat=chat, tool_executor=fake_tool), "vs code please")
+    assert "now open" not in reply
+    assert reply == "What should I copy?"
+    assert "claim_cut" in trace["detail"]["stages"]
+
+
+def test_a_refusal_does_not_count_as_done():
+    """launch_app answered "Not opened: …" — a later "is now open" is still false."""
+    chat = _chat(
+        [("launch_app", {"app_name": "notepad"})],
+        "Notepad is now open, sir.",
+    )
+
+    def refusing(name, args, channel):
+        return "Not opened: 'notepad' is approved but I couldn't find it installed on this system."
+
+    reply, _ = _run(Agent(get_db(), None, chat=chat, tool_executor=refusing), "open notepad")
+    assert reply == NOT_DONE_REPLY

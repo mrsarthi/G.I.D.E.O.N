@@ -278,3 +278,16 @@ def test_window_choice_needs_the_users_words(said, window, kept):
 
 def test_project_index_is_off_in_tests():
     assert projects.PROJECT_INDEX is False
+
+
+def test_app_names_written_as_identifiers(launched, tmp_path):
+    """Seen live: app_name="file_explorer"."""
+    desktop.launch_app("file_explorer", target="sendme")
+    assert launched == [["C:/fake/explorer.exe", str(tmp_path / "sendme")]]
+
+
+def test_project_named_as_the_app_with_its_path_as_target(launched, tmp_path):
+    """Seen live: launch_app(app_name="sendme", target=<sendme's folder>) — no app named."""
+    reply = desktop.launch_app("sendme", target=str(tmp_path / "sendme"))
+    assert launched == []
+    assert "Ask the user which app" in reply
