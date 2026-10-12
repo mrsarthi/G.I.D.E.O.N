@@ -65,10 +65,10 @@ EMBEDDING_MODEL = _env("GIDEON_EMBED_MODEL", "nomic-embed-text")
 # budget below is what we are allowed to fill with conversation, leaving room
 # for the tool schemas Ollama prepends and for the response itself.
 NUM_CTX = _env_int("GIDEON_NUM_CTX", 8192)
-# Sized for the current 22 tools (~2,580 tokens). brain/prompt.py measures the
+# Sized for the current 22 tools (~2,690 tokens). brain/prompt.py measures the
 # real cost at import and warns if this drifts, so adding tools cannot quietly
 # push the assembled prompt past num_ctx.
-TOOL_SCHEMA_RESERVE = _env_int("GIDEON_TOOL_RESERVE", 2600)
+TOOL_SCHEMA_RESERVE = _env_int("GIDEON_TOOL_RESERVE", 2800)
 RESPONSE_RESERVE = _env_int("GIDEON_RESPONSE_RESERVE", 1024)
 MEMORY_RESERVE = _env_int("GIDEON_MEMORY_RESERVE", 700)
 CHARS_PER_TOKEN = 4
