@@ -728,8 +728,9 @@ Work through in order. Record every result as a new finding.
 ## 6. Open threads
 
 - GPU at ~10% of its speed since 2026-10-14 (F-20): current llama.cpp's
-  tensor-core path on a GTX 16-series card. Fix: Ollama 0.35.1 with
-  auto-update off (user's decision pending).
+  tensor-core path on a GTX 16-series card. Decided 2026-10-27: roll back to
+  Ollama 0.35.1 and pause its updates, on the user's go, unless an Ollama
+  release fixes it first (check the release notes before downloading).
 - A deterministic fast path for the commonest commands ("open X", volume,
   media) would skip the model's decision entirely: proposed in F-20, not built.
 - Forced decisions with empty arguments (F-20): add a second constrained call
