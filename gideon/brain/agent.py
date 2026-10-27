@@ -29,6 +29,7 @@ from gideon.brain.approvals import ApprovalQueue, action_payload
 from gideon.brain.intent import (
     claims_action,
     correct_media_tool_choice,
+    is_command,
     should_offer_tools,
     strip_claims,
 )
@@ -104,8 +105,10 @@ class OpeningGate:
     released, so the claim can be replaced instead of spoken.
     """
 
-    def __init__(self, active: bool) -> None:
+    def __init__(self, active: bool, command: bool = False) -> None:
         self.active = active
+        # The user's message was a command: state words count as claims.
+        self.command = command
         self.claimed = False
         self._buffer = ""
 
@@ -114,7 +117,7 @@ class OpeningGate:
         if not self.active:
             return text
         self._buffer += text
-        if self.claimed or claims_action(self._buffer):
+        if self.claimed or claims_action(self._buffer, self.command):
             self.claimed = True
             return ""
         if len(self._buffer) >= OPENING_MAX_CHARS or (
@@ -295,6 +298,10 @@ class Agent:
         if offer_tools:
             trace.tools_offered_names = [t["function"]["name"] for t in offered_tools]
         log.debug("Tools %s for this turn", "offered" if offer_tools else "withheld")
+        # After a command, any reported state counts as a claim ("Music
+        # paused, sir."); after a question that merely mentions an action
+        # ("any tips for running?") the answer is just an answer.
+        command = offer_tools and is_command(user_prompt)
 
         for turn in range(MAX_TOOL_TURNS):
             full_ans = ""
@@ -308,7 +315,7 @@ class Agent:
             stats: dict[str, Any] = {}
             # Armed until a tool has acted, tools offered or not: a reply to a
             # message gating misjudged ("vs code please") can claim too.
-            gate = OpeningGate(not acted and not requested_approval)
+            gate = OpeningGate(not acted and not requested_approval, command=command)
             try:
                 stream = self._chat(
                     model=self.model,
@@ -397,21 +404,21 @@ class Agent:
                 and not nudged
                 and not (ran_tool or requested_approval or blocked_any)
                 and turn < MAX_TOOL_TURNS - 1
-                and claims_action(full_ans)
+                and claims_action(full_ans, command)
             ):
                 nudged = True
                 log.info("Reply claimed an action without a tool; forcing a decision")
                 trace.stages["claimed_action_nudge"] = trace.elapsed_ms()
-                # Gating may have withheld the tools; the router's pick for
-                # this message is the candidate set (98% recall, F-14).
-                # model=None: in "auto" mode this one-off decision call is
-                # routed even for models that cache the full list — nothing is
-                # cached for it, and a short catalog decides better.
-                # Routed on the last exchange too: "Vs code please" means
-                # nothing alone (the retry once picked set_clipboard for it).
-                candidates = self.router.select(
-                    routing_text, offered_tools or channel_tools
-                )
+                if offer_tools:
+                    # The model had these tools; it chooses among the same
+                    # ones. Re-routing on the conversation once sent "pause
+                    # the music" to a web search about the previous topic.
+                    candidates = offered_tools
+                else:
+                    # Gating withheld the tools: the router picks candidates
+                    # (98% recall, F-14), from this message and the exchange
+                    # before it — "Vs code please" means nothing alone (F-19).
+                    candidates = self.router.select(routing_text, channel_tools)
                 forced = self._force_decision(
                     messages,
                     full_ans,
@@ -455,8 +462,13 @@ class Agent:
             # — minus any sentence claiming what no tool did.
             if gate.active:
                 held_text = gate.release()
-                if gate.claimed:
-                    honest = strip_claims(held_text)
+                if gate.claimed and collected_tool_calls:
+                    # Said alongside a real tool call ("Playing Arctic Monkeys
+                    # now"): premature, not false. Dropped — the next pass
+                    # reports what actually happened.
+                    full_ans = held_text = ""
+                elif gate.claimed:
+                    honest = strip_claims(held_text, command)
                     log.info("Cut a false claim from the reply: %r", held_text[:120])
                     trace.stages["claim_cut"] = trace.elapsed_ms()
                     full_ans = honest

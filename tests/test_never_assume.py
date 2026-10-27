@@ -13,7 +13,7 @@ from unittest.mock import patch
 import pytest
 
 from gideon.brain.agent import CLAIMED_ACTION_NUDGE, Agent, OpeningGate
-from gideon.brain.intent import NOT_DONE_REPLY, claims_action, strip_claims
+from gideon.brain.intent import NOT_DONE_REPLY, claims_action, is_command, strip_claims
 from gideon.evals.runner import Case, fake_tool, score
 from gideon.storage.db import get_db
 from gideon.tools.registry import get_tool
@@ -418,3 +418,98 @@ def test_a_refusal_does_not_count_as_done():
 
     reply, _ = _run(Agent(get_db(), None, chat=chat, tool_executor=refusing), "open notepad")
     assert reply == NOT_DONE_REPLY
+
+
+# ---------------------------------------------------------------------------
+#  After a command, any reported state is a claim (2026-10-27: "Calculator is
+#  open, sir." / "Music paused, sir." with no tool call, six of six uncaught)
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "reply",
+    ["Calculator is open, sir.", "Music paused, sir.", "Music playback paused, sir.", "All set, boss.", "Done!"],
+)
+def test_reported_states_are_claims_after_a_command(reply):
+    assert claims_action(reply, command=True)
+    # The same words in conversation are not claims ("the shop is open").
+    assert not claims_action(reply, command=False)
+
+
+@pytest.mark.parametrize("reply", ["Which app should I open, sir?", "What time should I set it for?"])
+def test_questions_after_a_command_are_not_claims(reply):
+    assert not claims_action(reply, command=True)
+
+
+def test_an_uncaught_state_claim_now_forces_a_real_call():
+    chat = _chat(
+        "Calculator is open, sir.",
+        {"tool": "launch_app", "arguments": {"app_name": "calculator"}},
+        "Calculator is open, sir.",
+    )
+    reply, trace = _run(Agent(get_db(), None, chat=chat, tool_executor=fake_tool), "open calculator")
+    names = [(c["name"], c["source"]) for p in trace["detail"]["passes"] for c in p["tool_calls"]]
+    assert names == [("launch_app", "forced")]
+    assert reply == "Calculator is open, sir."  # now true: the tool ran
+
+
+# ---------------------------------------------------------------------------
+#  Eval 2026-10-27: three regressions from the changes above
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "message,expected",
+    [
+        ("open calculator", True),
+        ("pause the music", True),
+        ("Can you open a new instance of vs code please", True),
+        ("hey gideon, set a reminder for 5", True),
+        ("put on some Arctic Monkeys", True),
+        ("I want to start running in the mornings, any tips?", False),
+        ("what is the weather in delhi?", False),
+        ("Vs code please", False),
+    ],
+)
+def test_commands_are_imperative_requests(message, expected):
+    assert is_command(message) is expected
+
+
+def test_advice_is_not_a_claim_when_the_question_merely_mentions_an_action():
+    """tricky-run-chat: tools were offered for "start" and "running"; the tips
+    were taken for a claim and replaced by a reminder question."""
+    tips = "Start slow, sir: run three easy mornings a week and keep a set bedtime. You'll be running daily soon."
+    chat = _chat(tips)
+    reply, trace = _run(Agent(get_db(), None, chat=chat), "I want to start running in the mornings, any tips?")
+    assert reply == tips
+    assert len(chat.calls) == 1, "no forced decision"
+
+
+def test_the_retry_chooses_among_the_tools_the_model_already_had():
+    """history-tools-pause: re-routing on the previous (octopus) exchange
+    turned "pause the music" into a web search."""
+    chat = _chat(
+        "Music paused, sir.",
+        {"tool": "control_media", "arguments": {"action": "play_pause"}},
+        "Paused, sir.",
+    )
+    _run(Agent(get_db(), None, chat=chat, tool_executor=fake_tool), "pause the music")
+    first, forced, _ = chat.calls
+    offered = {t["function"]["name"] for t in first["tools"]}
+    assert set(forced["format"]["properties"]["tool"]["enum"]) == offered | {"ask_user"}
+
+
+def test_a_premature_claim_beside_a_real_call_is_dropped_quietly():
+    """media-play-artist: "I haven't done that yet — it didn't go through." was
+    glued to the real answer, though a tool call came with the claim."""
+    calls = []
+
+    def chat(**kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            return iter([
+                {"message": {"content": "Playing Arctic Monkeys now, boss. "}},
+                {"message": {"tool_calls": [{"function": {"name": "play_youtube_music", "arguments": {"query": "Arctic Monkeys"}}}]}},
+            ])
+        return iter([{"message": {"content": "Arctic Monkeys are playing, boss."}}])
+
+    reply, _ = _run(Agent(get_db(), None, chat=chat, tool_executor=fake_tool), "put on some Arctic Monkeys")
+    assert reply == "Arctic Monkeys are playing, boss."
+    # The next pass doesn't see the premature claim as something it said.
+    assert all("Playing Arctic Monkeys now" not in str(m.get("content")) for m in calls[1]["messages"])

@@ -64,7 +64,20 @@ cost shows up in traces and evals.
 - "Paused the music, sir." with no tool call: a bare past tense opening a
   sentence wasn't a known claim shape. It is now (it needs an object, so
   "Set theory is…" isn't caught).
-- History replay: see below.
+- **History replays tool calls.** Same conversation (a weather turn and a
+  "open spotify" turn, both done with tools), then a command, 2 runs each:
+
+  | Command | Replay off (shipped until now) | Replay on |
+  | :--- | :--- | :--- |
+  | open calculator | 0/2 tool calls; "Calculator is open, sir." | 2/2 native |
+  | Open notepad | 0/2; "Notepad is open, sir." | 2/2 native |
+  | pause the music | 0/2; "Music paused, sir." | 2/2 forced (caught, then done) |
+
+  With replay off, **all six replies were false and none was caught**. The
+  patterns knew "is *now* open", not "is open" or "Music paused". The fix is
+  that **after a command** (tools offered), any statement reporting a state
+  (open, paused, playing, done, set…) counts as a claim; questions don't. In
+  conversation the same words stay innocent ("the shop is open until 9").
 
 **Separately, the runtime is ~8× slower than on 2026-10-12.** Uncached
 prompt processing ~27–30 tok/s (was ~190–250), generation ~10.5 tok/s (was

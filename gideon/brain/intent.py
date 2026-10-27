@@ -246,15 +246,57 @@ _CLAIM_PATTERNS = (
 )
 
 
-def claims_action(reply: str) -> bool:
-    """Whether a reply promises or reports doing something a tool would do."""
+_SENTENCES = re.compile(r"[^.!?\n]+(?:[.!?]+|\n|$)")
+
+# After a command, a statement reporting any of these states is a claim:
+# "Calculator is open, sir.", "Music paused, sir." (2026-10-27: six of six
+# such replies, no tool called, none caught by the patterns above). In
+# conversation the same words are innocent ("the shop is open until 9"),
+# so they only count when the user's message was a command.
+_STATE_WORDS = re.compile(
+    r"\b(?:open(?:ed)?|launch(?:ed)?|running|playing|paused|muted|unmuted|stopped|resumed|"
+    r"closed|started|done|all\s+set|set|saved|added|copied|scheduled|skipped|"
+    r"turned\s+(?:up|down|on|off))\b",
+    re.IGNORECASE,
+)
+
+
+# A request to act, not a question that mentions an action: "open
+# calculator", "can you pause the music", "hey gideon, set a reminder…" — but
+# not "I want to start running in the mornings, any tips?" (2026-10-27: tools
+# were offered for its trigger words, and the advice it got was taken for a
+# claim and replaced by a reminder question).
+_COMMAND = re.compile(
+    r"^\W*(?:(?:hey|ok|okay|yo)\s+gideon\W*)?(?:please\s+|kindly\s+|just\s+)?"
+    r"(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?|i\s+(?:want|need)\s+you\s+to\s+|go\s+ahead\s+and\s+)?"
+    rf"(?:{_ACTION_VERBS})\w*\b",
+    re.IGNORECASE,
+)
+
+
+def is_command(user_prompt: str) -> bool:
+    """Whether the message asks G.I.D.E.O.N to do something, imperatively."""
+    return bool(_COMMAND.match(user_prompt or ""))
+
+
+def claims_action(reply: str, command: bool = False) -> bool:
+    """Whether a reply promises or reports doing something a tool would do.
+
+    `command`: the user's message asked for an action (tools were offered).
+    Then any statement — not a question — reporting a state counts too.
+    """
     text = (reply or "").strip()
-    return bool(text) and any(p.search(text) for p in _CLAIM_PATTERNS)
+    if not text:
+        return False
+    if any(p.search(text) for p in _CLAIM_PATTERNS):
+        return True
+    return command and any(
+        _STATE_WORDS.search(s) and not s.rstrip().endswith("?") for s in _SENTENCES.findall(text)
+    )
 
 
 # Said instead when a reply was nothing but a false claim.
 NOT_DONE_REPLY = "I haven't done that yet — it didn't go through."
-_SENTENCES = re.compile(r"[^.!?\n]+(?:[.!?]+|\n|$)")
 # What is left after cutting a claim, if it says nothing ("Yes boss.").
 _FILLER_ONLY = re.compile(
     r"^\W*(?:(?:yes|sure|certainly|okay|ok|alright|right|done|of\s+course|boss|sir|"
@@ -263,7 +305,7 @@ _FILLER_ONLY = re.compile(
 )
 
 
-def strip_claims(reply: str) -> str:
+def strip_claims(reply: str, command: bool = False) -> str:
     """The reply without its sentences claiming what no tool did.
 
     Used when a claim was held back and nothing could replace it — a forced
@@ -272,5 +314,5 @@ def strip_claims(reply: str) -> str:
     """
     sentences = [s.strip() for s in _SENTENCES.findall(reply or "") if s.strip()]
     # Filler goes with the claim it introduced ("Yes boss. <claim>").
-    kept = [s for s in sentences if not claims_action(s) and not _FILLER_ONLY.match(s)]
+    kept = [s for s in sentences if not claims_action(s, command) and not _FILLER_ONLY.match(s)]
     return " ".join(kept) or NOT_DONE_REPLY
