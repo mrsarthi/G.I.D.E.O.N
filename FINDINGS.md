@@ -196,10 +196,39 @@ Ollama server so the real one's settings stayed untouched:
 - **Seen during runs:** the GPU alternates between busy (1,350 MHz, ~16 W)
   and fully idle (300 MHz, 3.8 W), and GPU discovery at Ollama start times
   out at 90 s before succeeding on retry.
-- **Next:** benchmark upstream llama.cpp (`llama-bench`, CUDA 12 build) on
-  the same model file. Fast means Ollama's build; equally slow means Windows
-  or the driver. The official b11919 build is downloaded (in the session
-  scratchpad); running a downloaded program needs the user's go-ahead.
+- **Root cause: current llama.cpp on a GPU without tensor cores.** The
+  upstream benchmark (b11919, run by the user) on the same file: **pp512
+  32.3 tok/s, tg64 11.8 tok/s**, with the warning *"suboptimal performance
+  due to a lack of tensor cores … compile with
+  CMAKE_CUDA_ARCHITECTURES=61-virtual;80-virtual and GGML_CUDA_FORCE_MMQ to
+  force the use of the Pascal code for Turing"*. The GTX 16 series is
+  Turing (compute 7.5) **without tensor cores**, and current llama.cpp sends
+  7.5 down its tensor-core path. Ollama switched to that engine with 0.40.x,
+  installed 2026-10-14. Before that it was **0.35.1** (app log, 2026-10-03),
+  whose older engine gave the F-11/F-16 speeds.
+- **No runtime switch fixes it** (all verified on the GPU, 3.1 GB VRAM in use):
+
+  | Back-end, setting | Prompt tok/s | Gen tok/s |
+  | :--- | ---: | ---: |
+  | CUDA as shipped | 30 | 10.4 |
+  | CUDA, `GGML_CUDA_FORCE_MMQ=1` | 30 | 10.2 |
+  | CUDA, `CUDA_FORCE_PTX_JIT=1` (older code) | 16 | 2.9 |
+  | Vulkan, NVIDIA driver only, FA + q8 | 66 | 8.7 |
+  | **Vulkan, NVIDIA only, FA + f16 KV** | **90** | 9.3 |
+  | CPU only | 33 | 10.1 |
+  | *Ollama 0.35.1, 2026-10-12* | *~190–250* | *~23* |
+
+- **Vulkan hangs unless restricted to the NVIDIA driver:** the AMD iGPU's
+  Vulkan driver (2021) hangs at start-up. That is also Ollama's 90-second
+  GPU-discovery stall (`OLLAMA_VULKAN` is on). With
+  `VK_DRIVER_FILES=…
+v-vk64.json` it starts in ~10 s.
+- **Fix:** roll Ollama back to **0.35.1** (`OllamaSetup.exe`, 1.58 GB) and
+  turn off its automatic updates (Ollama's `auto_update_enabled` setting).
+  Interim: Vulkan via Ollama (`OLLAMA_LLM_LIBRARY=vulkan` +
+  `VK_DRIVER_FILES`) triples prompt reading but not generation.
+- **For System 2:** prefer a GPU with tensor cores (RTX); current llama.cpp
+  is not tuned for the GTX 16 series.
 
 ### F-19 · 2026-10-12 · Live red flag: "The sendme folder is now open in VS Code", and nothing opened
 User session (quick-ask, 18:28):
@@ -698,9 +727,9 @@ Work through in order. Record every result as a new finding.
 
 ## 6. Open threads
 
-- GPU at ~10% of its speed since ~2026-10-15 (F-20). A restart and Ollama
-  0.40.11 didn't help; next, benchmark upstream llama.cpp on the same model
-  file to tell Ollama's build from Windows or the driver.
+- GPU at ~10% of its speed since 2026-10-14 (F-20): current llama.cpp's
+  tensor-core path on a GTX 16-series card. Fix: Ollama 0.35.1 with
+  auto-update off (user's decision pending).
 - A deterministic fast path for the commonest commands ("open X", volume,
   media) would skip the model's decision entirely: proposed in F-20, not built.
 - Forced decisions with empty arguments (F-20): add a second constrained call
