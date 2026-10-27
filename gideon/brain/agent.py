@@ -406,7 +406,10 @@ class Agent:
                 and not nudged
                 and not (ran_tool or requested_approval or blocked_any)
                 and turn < MAX_TOOL_TURNS - 1
-                and claims_action(full_ans, command)
+                # Claims come first; in conversation only the opening is
+                # checked, so a long answer's advice ("Set a consistent
+                # time") is not taken for one. After a command, all of it.
+                and claims_action(full_ans if command else full_ans[:OPENING_MAX_CHARS], command)
             ):
                 nudged = True
                 log.info("Reply claimed an action without a tool; forcing a decision")

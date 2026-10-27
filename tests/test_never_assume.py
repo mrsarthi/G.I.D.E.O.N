@@ -534,3 +534,29 @@ def test_ask_user_without_a_question_still_asks():
     reply, trace = _run(Agent(get_db(), None, chat=chat), "copy that to my clipboard")
     assert reply == CLARIFY_REPLY
     assert trace["outcome"] == "clarified"
+
+
+@pytest.mark.parametrize(
+    "advice",
+    [
+        "Running in the mornings is a great habit, sir.",
+        "Reading before bed helps you sleep.",
+        "2. **Set a consistent time** - pick a time that works for you.",
+        "Setting goals is important.",
+    ],
+)
+def test_advice_is_not_a_claim(advice):
+    """Eval 2026-10-27, tricky-run-chat: running tips were taken for claims."""
+    assert not claims_action(advice)
+
+
+def test_a_long_answer_is_checked_at_its_opening_only():
+    tips = (
+        "Yes sir, starting a morning running routine is a great way to build discipline and improve health. "
+        "Here are a few practical tips:\n\n1. **Start slow** - begin with a short walk.\n\n"
+        "2. **Set a consistent time** - pick a time that works for your schedule."
+    )
+    chat = _chat(tips)
+    reply, _ = _run(Agent(get_db(), None, chat=chat), "I want to start running in the mornings, any tips?")
+    assert reply == tips
+    assert len(chat.calls) == 1, "no forced decision"

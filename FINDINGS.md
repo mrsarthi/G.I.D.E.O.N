@@ -79,6 +79,52 @@ cost shows up in traces and evals.
   (open, paused, playing, done, set…) counts as a claim; questions don't. In
   conversation the same words stay innocent ("the shop is open until 9").
 
+**Eval, three full runs** (108 cases, 5 new `history` cases; on the slowed
+GPU, so the latency numbers are not comparable with earlier runs):
+
+| Run | Overall | chat | clarify | history | slots | tool | Forced calls |
+| :--- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `144906` (cache + replay + command claims) | 88.9% | 95% | 80% | 4/5 | 92.5% | 83.3% | 19 |
+| `154127` (+ fixes below) | 86.1% | 100% | 70% | 4/5 | 90.0% | 72.2% | 16 |
+| `163622` (+ fixes below) | **88.9%** | 95% | 80% | 4/5 | 92.5% | 83.3% | 16 |
+
+Each run exposed false positives or holes in today's own changes:
+- **Advice taken for a claim.** "Any tips for running?" offered tools (trigger
+  words), and the tips were caught by the new "state words after a command"
+  rule. That rule now needs an imperative request (`is_command`). Later the
+  same answer was caught by "2. **Set** a consistent time" (bare past tense)
+  and by "**Running** in the mornings…" (gerund). "Set" is out of the
+  past-tense list, gerunds need an object, and in conversation only the
+  opening is checked.
+- **"Pause the music" became a web search about octopuses.** The forced
+  decision's candidates were re-routed on the previous exchange (F-19). When
+  tools were offered, it now chooses among those same tools; context routing
+  is kept for turns where gating withheld them.
+- **A premature claim beside a real tool call** ("Playing Arctic Monkeys
+  now") was cut to "I haven't done that yet" and glued to the real answer.
+  It is now dropped quietly.
+- **`ask_user` without a question** left only "I haven't done that yet". The
+  question is now required in the schema, with a plain fallback.
+- **The request repeated as the value:**
+  `set_clipboard(text="Copy that to your clipboard")` ran. A required value
+  made only of the tool's instruction words (`Param.filler`, default
+  `ground_ignore`) is now missing; `search_web` keeps "latest news" as a
+  query.
+
+After the last fix (advice patterns), `170139` re-ran the affected
+categories: **chat 20/20**, clarify 80%, history 4/5, media 5/7.
+
+Steady failures across all runs (model limits, not regressions): no tool for
+the Wolfram cases (3), "where am I?", tech news, "play Arctic Monkeys" →
+search instead of play, and two "which file/command?" clarify cases where
+the model answers instead of asking.
+
+**Next for the forced decision:** it often names the right tool with empty
+arguments (`control_media({})` ×2 and `ask_user({})` ×2 in `170139`). The
+broker then refuses and asks, which is safe but a wasted turn. A second
+constrained call with the chosen tool's own parameter schema (required
+fields, enums) would fill them for a few cached tokens.
+
 **Separately, the runtime is ~8× slower than on 2026-10-12.** Uncached
 prompt processing ~27–30 tok/s (was ~190–250), generation ~10.5 tok/s (was
 23). Every penalty is multiplied by that. Investigated, on a temporary second
@@ -611,6 +657,8 @@ Work through in order. Record every result as a new finding.
   re-measure; if still slow, install the downloaded Ollama 0.40.11.
 - A deterministic fast path for the commonest commands ("open X", volume,
   media) would skip the model's decision entirely: proposed in F-20, not built.
+- Forced decisions with empty arguments (F-20): add a second constrained call
+  for the chosen tool's own parameter schema.
 - Grow `cases.toml` from real 👎 traces; today's eval is hand-written only.
 - Local models kept (2026-10-10): `qwen3:4b-instruct` (default), `llama3.2`
   (previous default, kept for comparison), `nomic-embed-text` (memory). Removed to free disk:

@@ -188,11 +188,14 @@ _CLAIM_PATTERNS = (
         rf"\bi\s+can\s+(?:{_ACTION_VERBS})\w*\b[^.!?\n]{{0,60}}\bright\s+(?:now|away)\b",
         re.IGNORECASE,
     ),
-    # "Checking your GPU now…", "Yes boss. Opening Notepad."
+    # "Checking your GPU now…", "Yes boss. Opening Notepad." The gerund needs
+    # an object — "Running in the mornings is a great habit" is advice
+    # (eval, 2026-10-27) — and a name only counts capitalised.
     re.compile(
         r"^\W*(?:(?:yes|right\s+away|sure|certainly|okay|ok|of\s+course|on\s+it)\b[^.!?\n]{0,15}[.!,]?\s*)?"
         r"(?:checking|setting|opening|launching|playing|searching|adding|saving|copying|"
-        r"muting|running|reading|fetching|pulling|scheduling)\b",
+        r"muting|running|reading|fetching|pulling|scheduling)\s+"
+        r"(?:the|your|a|an|it|that|this|some|now|up|for\s+(?:the|your|a|an|you)|(?-i:[A-Z][\w.+-]*))\b",
         re.IGNORECASE,
     ),
     # "Here are your current reminders: …", "Here's what's on your to-do list"
@@ -217,14 +220,16 @@ _CLAIM_PATTERNS = (
         re.IGNORECASE,
     ),
     # A bare past tense opening a sentence: "Paused the music, sir." (seen
-    # 2026-10-27 with no tool call), "Opened Notepad.", "Set a reminder for 5".
+    # 2026-10-27 with no tool call), "Opened Notepad.". Not "Set": it reads the
+    # same as an instruction ("2. **Set a consistent time**" in running tips);
+    # after a command, the state words below still catch "set".
     # The object is required — "Set theory is…" and "Added sugar…" are not
     # claims — and is matched case-sensitively so a name counts ("Notepad").
     re.compile(
         r"(?:^|[.!?]\s+|\n)\W*(?:(?:[Yy]es|[Dd]one|[Oo]kay|[Oo]k|[Ss]ure|[Aa]lright|[Rr]ight)\b[^.!?\n]{0,15}"
         r"[.!,—-]?\s*)?"
         r"(?:[Oo]pened|[Ll]aunched|[Ss]tarted|[Pp]aused|[Rr]esumed|[Pp]layed|[Mm]uted|[Uu]nmuted|[Ss]topped|"
-        r"[Ss]kipped|[Ss]et|[Aa]dded|[Ss]aved|[Cc]opied|[Ss]cheduled|[Tt]urned|[Rr]aised|[Ll]owered|"
+        r"[Ss]kipped|[Aa]dded|[Ss]aved|[Cc]opied|[Ss]cheduled|[Tt]urned|[Rr]aised|[Ll]owered|"
         r"[Cc]losed|[Cc]reated|[Nn]oted|[Mm]arked|[Cc]ompleted)\s+"
         r"(?:the|your|a|an|it|that|this|[A-Z][\w.+-]*)\b"
     ),
