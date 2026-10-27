@@ -42,6 +42,7 @@ from gideon.brain.prompt import (
     trim_to_budget,
 )
 from gideon.brain.router import ToolRouter
+from gideon.brain.style import AddressLimiter, limit_addresses
 from gideon.brain.toolcalls import (
     PSEUDO_CALL_CHAR_LIMIT,
     extract_chunk_content,
@@ -233,10 +234,16 @@ class Agent:
         trace = TraceRecorder(session_id, channel, user_prompt, self.model)
         if on_event is not None:
             on_event({"trace_id": trace.trace_id})
+        # One "boss"/"sir" per reply, in its first sentence (brain/style.py).
+        addresses = AddressLimiter()
         try:
             for text in self._run(trace, session_id, user_prompt, channel, on_event):
-                trace.text_emitted(text)
-                yield text
+                if shown := addresses.feed(text):
+                    trace.text_emitted(shown)
+                    yield shown
+            if shown := addresses.flush():
+                trace.text_emitted(shown)
+                yield shown
         finally:
             # Also reached when the client disconnects mid-stream (outcome
             # stays "aborted"), which is itself worth knowing.
@@ -484,6 +491,8 @@ class Agent:
             # No tools requested: this was the final answer.
             if not collected_tool_calls:
                 if full_ans.strip():
+                    # Stored as shown, so history doesn't teach the habit back.
+                    full_ans = limit_addresses(full_ans)
                     asst_id = db.insert_message(session_id, "assistant", full_ans)
                     self._remember(asst_id, full_ans, session_id, "assistant")
                 trace.outcome = (

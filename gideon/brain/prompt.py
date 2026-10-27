@@ -128,11 +128,7 @@ def build_live_context_block(
 
     block = f"""{LIVE_CONTEXT_HEADER}
 - User Name: {user_name}
-- Address Formats: Randomly alternate between "boss" and "sir" in your response openings.
-- Addressing Rules:
-  1. Address the user AT MOST ONCE per turn, strictly near the beginning.
-  2. NEVER append "boss" or "sir" at the end of a sentence or end of response.
-  3. DO NOT place a comma after "boss" or "sir" (write "Yes boss..." or "Certainly sir..." without a comma after the title).
+- Address: "boss" or "sir", once, at the start of the reply.
 - Ongoing Projects: {projects}
 - Current Local Time: {now}"""
 

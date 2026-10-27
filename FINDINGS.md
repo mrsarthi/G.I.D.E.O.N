@@ -32,6 +32,28 @@ not transfer to System 2; **ratios and causes will**.
 
 ## 2. Findings
 
+### F-21 · 2026-10-27 · "Boss, … sir": the addressing rule is now enforced in code
+User report: G.I.D.E.O.N says "boss"/"sir" too often, often at both ends of
+a reply. In the last 300 stored replies, **53 had two or more** and **103
+ended with one**, although the rule ("at most once, near the beginning,
+never at the end") was in the system prompt *and* in the live context every
+turn.
+
+`brain/style.py` now keeps one address, the first, and only in the first
+sentence, and removes the rest as the text streams. So what is shown,
+spoken and stored agree, and history no longer teaches the habit back.
+Non-addresses stay ("my boss", "the final boss", "Sir Isaac Newton").
+Streaming any chunking gives the same text as filtering the whole reply
+(tested on 13 real-style replies, 25 random chunkings each).
+
+The live context's 4-line addressing block (≈70 tokens, re-read on every
+turn because it sits after the cached prefix) is one line now. At today's
+GPU speed that alone saves ≈2 s per reply.
+
+Latency seen by the user the same evening ("good evening gideon", 68.6 s):
+9.8 s model load (an A/B test of mine had unloaded the model) and 56.3 s
+reading a cold 1,668-token prompt at ~30 tok/s (the F-20 slowdown).
+
 ### F-20 · 2026-10-27 · The "7-second penalty" was a cache miss we caused; separately, the GPU runs at a tenth of its speed
 **The penalty.** When the model answers a command in prose, the harness
 forces a decision (F-15). Timing every call and reading Ollama's own log
@@ -153,8 +175,30 @@ Ollama server so the real one's settings stayed untouched:
   process tested today was equally slow, so the problem is below Ollama.
   Upstream llama.cpp couldn't be benchmarked: GitHub downloads ran at
   ~0.3 KB/s today.
-- **Next:** a full restart, then re-measure. If it is still slow, install
-  Ollama 0.40.11 (already downloaded by Ollama's updater).
+- **Restart and update did not fix it.** The user restarted the laptop
+  (2026-10-27 17:59), and Ollama's updater installed 0.40.11 at logon.
+  Same numbers: prompts 29 tok/s, generation 11 tok/s.
+- **Ruled out since:**
+  - **sleep/resume state and Ollama 0.40.4:** both changed, nothing changed;
+  - **batch size:** prompt speed is the same at batch 64 and 2048 (29
+    tok/s). It does not scale with batching, as if each token went through
+    alone;
+  - **model-specific:** `llama3.2` is as slow (41 tok/s prompts, 15 tok/s
+    generation, ~25 ms per token, in proportion to its size);
+  - **the embedding table in system RAM:** pinned to the GPU with
+    `LLAMA_ARG_OVERRIDE_TENSOR=token_embd\.weight=CUDA0` (Ollama passes
+    `LLAMA_ARG_*` through to `llama-server`): one graph split, same speed;
+  - **runtime compilation (PTX JIT):** with `CUDA_DISABLE_PTX_JIT=1` both
+    bundled CUDA libraries still load and run, so both carry native sm_75
+    code;
+  - **Windows power mode and GPU scheduling:** "Best performance" on mains,
+    scheduling at its default, NVIDIA driver unchanged since March.
+- **Seen during runs:** the GPU alternates between busy (1,350 MHz, ~16 W)
+  and fully idle (300 MHz, 3.8 W), and GPU discovery at Ollama start times
+  out at 90 s before succeeding on retry.
+- **Next:** benchmark upstream llama.cpp (`llama-bench`, CUDA 12 build) on
+  the same model file. Fast means Ollama's build; equally slow means Windows
+  or the driver.
 
 ### F-19 · 2026-10-12 · Live red flag: "The sendme folder is now open in VS Code", and nothing opened
 User session (quick-ask, 18:28):
@@ -653,8 +697,9 @@ Work through in order. Record every result as a new finding.
 
 ## 6. Open threads
 
-- GPU at ~10% of its speed since ~2026-10-15 (F-20): restart the laptop,
-  re-measure; if still slow, install the downloaded Ollama 0.40.11.
+- GPU at ~10% of its speed since ~2026-10-15 (F-20). A restart and Ollama
+  0.40.11 didn't help; next, benchmark upstream llama.cpp on the same model
+  file to tell Ollama's build from Windows or the driver.
 - A deterministic fast path for the commonest commands ("open X", volume,
   media) would skip the model's decision entirely: proposed in F-20, not built.
 - Forced decisions with empty arguments (F-20): add a second constrained call
