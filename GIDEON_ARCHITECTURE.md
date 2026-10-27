@@ -51,9 +51,23 @@
   templates have no slot for a mid-conversation system message, so Ollama
   hoisted it into the system block at the top and every turn was a full cache
   miss. Measured after the fix (CPU): prompt processing 7.5 s → 0.4–0.7 s,
-  including across a minute change. The tool schemas are placed by the
-  template inside the *last* user message, so they are re-processed on every
-  tool-enabled turn regardless — the case for offering fewer tools.
+  including across a minute change. Where the tool schemas go depends on the
+  model's template: llama3.2 puts them inside the *last* user message, so they
+  are re-processed on every tool-enabled turn (the case for the router); Qwen
+  puts them in the system block, where they are cached (F-13).
+- **One tool list per turn** (F-20): every model call in a turn — first
+  pass, forced decision, reply after a tool — sends the same tools and
+  extends the same messages, so Ollama re-reads only the new tokens. Changing
+  the list mid-turn changes the prompt from its first token (Qwen) and the
+  whole conversation is read again: that was the "7-second penalty".
+- **History replays tool calls** (F-20): earlier turns come back as the tool
+  calls they were (name and arguments) with a 240-character copy of each
+  result, not just the sentence that followed — plain-looking history made
+  the model answer commands in prose. Results from outside the user's
+  control (web, documents, clipboard) are not repeated, so injected text
+  cannot outlive the turn whose taint tracking covered it, and never-assume
+  grounds values only in what was *said* (`spoken_messages`), never in tool
+  output. `GIDEON_HISTORY_TOOL_CALLS=0` turns it off.
 - **Thinking models** (e.g. Qwen3) are called with `think=False` on the fast
   path; Ollama's reported capabilities decide, cached per model.
 - **Token budget** (`brain/prompt.py`): `num_ctx` minus the tool schemas
@@ -190,10 +204,18 @@ Every tool call the model asks for passes through, in this order:
 4. **Approvals** — as above.
 5. **Execution**, then the result is capped and fenced.
 
-After the model's final answer, the **claimed-action check**
-(`brain/intent.py`) looks for a reply that promises or reports an action
-("I'll check your GPU…") when no tool ran; the model is nudged once, with the
-full tool list, to act or ask (F-12).
+**False claims** (F-12, F-15, F-17, F-19). Until a tool has acted, the
+opening of every reply is held back (`OpeningGate`) and checked by
+`claims_action` (`brain/intent.py`): promises ("I'll check your GPU…"),
+reported results ("Notepad is now open", "Paused the music"), invented live
+facts (weather) and false refusals. A claim is never streamed. Instead the
+model makes a **forced decision**: JSON-schema-constrained output naming one
+router-chosen candidate tool or `ask_user` (the claim and the instruction are
+appended to the same prompt, so it is cheap — F-20). The call then goes
+through the broker like any other. A claim nothing can replace is cut
+sentence by sentence (`strip_claims`); a reply that was only a claim becomes
+"I haven't done that yet". A tool that answers "Not …" (refused, blocked)
+does not count as having acted.
 
 ### D. Voice (`voice/`, local)
 - **Primary**: Kokoro-82M ONNX (`GIDEON_TTS_ENGINE=kokoro`, the default) on
@@ -441,6 +463,7 @@ This halves the KV cache (~940MB → ~470MB at 8k context), leaving room for the
 | `GIDEON_PROJECT_INDEX` | `1` | Keep project knowledge (fact memory) up to date |
 | `GIDEON_PROJECT_REFRESH_MINUTES` | `30` | How often project state is re-read |
 | `GIDEON_PROJECT_SCAN_DEPTH` | `4` | Folder levels searched below each root |
+| `GIDEON_HISTORY_TOOL_CALLS` | `1` | Replay earlier tool calls in the history (F-20) |
 | `GIDEON_ON_BATTERY` | `cpu` | Model on battery: `cpu`, `off`, or `gpu` (unsafe on this laptop) |
 | `GIDEON_BATTERY_THREADS` | half the logical cores | CPU threads for battery-mode inference |
 | `GIDEON_WARM_UP` | `1` | Load the model at engine start (mains power only) |

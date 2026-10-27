@@ -216,6 +216,18 @@ _CLAIM_PATTERNS = (
         r"|\bsuccessfully\s+(?:opened|launched|started|saved|added|copied|scheduled|set)\b",
         re.IGNORECASE,
     ),
+    # A bare past tense opening a sentence: "Paused the music, sir." (seen
+    # 2026-10-27 with no tool call), "Opened Notepad.", "Set a reminder for 5".
+    # The object is required — "Set theory is…" and "Added sugar…" are not
+    # claims — and is matched case-sensitively so a name counts ("Notepad").
+    re.compile(
+        r"(?:^|[.!?]\s+|\n)\W*(?:(?:[Yy]es|[Dd]one|[Oo]kay|[Oo]k|[Ss]ure|[Aa]lright|[Rr]ight)\b[^.!?\n]{0,15}"
+        r"[.!,—-]?\s*)?"
+        r"(?:[Oo]pened|[Ll]aunched|[Ss]tarted|[Pp]aused|[Rr]esumed|[Pp]layed|[Mm]uted|[Uu]nmuted|[Ss]topped|"
+        r"[Ss]kipped|[Ss]et|[Aa]dded|[Ss]aved|[Cc]opied|[Ss]cheduled|[Tt]urned|[Rr]aised|[Ll]owered|"
+        r"[Cc]losed|[Cc]reated|[Nn]oted|[Mm]arked|[Cc]ompleted)\s+"
+        r"(?:the|your|a|an|it|that|this|[A-Z][\w.+-]*)\b"
+    ),
     # Live facts only a tool could know. The live context carries the time
     # but no weather or prices, so "The current weather in Varanasi is mostly
     # cloudy with a high of 28°C" with no tool call is invented (seen live,

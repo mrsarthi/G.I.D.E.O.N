@@ -32,6 +32,71 @@ not transfer to System 2; **ratios and causes will**.
 
 ## 2. Findings
 
+### F-20 · 2026-10-27 · The "7-second penalty" was a cache miss we caused; separately, the GPU runs at a tenth of its speed
+**The penalty.** When the model answers a command in prose, the harness
+forces a decision (F-15). Timing every call and reading Ollama's own log
+(`llama-server` prints how many prompt tokens it actually *read*, not
+restored from cache) showed where the time went:
+
+| Call | Prompt | Re-read before | Why |
+| :--- | ---: | ---: | :--- |
+| Forced decision | 1,357 tok | **676** | sent with `tools=[]`: Qwen renders tools at the top, so the prompt differed from token ~680 on |
+| Reply after the tool | 1,898 tok | **1,217** | sent with the router's 5 tools instead of the turn's 22: same effect |
+
+About 1,900 tokens re-read per forced command. At this GPU's normal speed
+(~250 tok/s, F-11) that is ≈7.5 s: the penalty F-17 measured.
+
+**Fix: one tool list per turn.** The forced decision now sends the turn's
+own tools and messages with the claim and the instruction appended. The
+schema's enum still limits the choice to the router's candidates. The reply
+pass keeps the same list too. Measured after (same history, real model):
+
+| Call | Re-read after |
+| :--- | ---: |
+| Forced decision | **142–144** |
+| Reply after the tool | **40–41** |
+
+≈185 tokens instead of ≈1,900: ≈0.7 s instead of ≈7.5 s at normal speed.
+The forced call is now traced as its own pass (`forced_candidates`), so the
+cost shows up in traces and evals.
+
+**Also found:**
+- "Paused the music, sir." with no tool call: a bare past tense opening a
+  sentence wasn't a known claim shape. It is now (it needs an object, so
+  "Set theory is…" isn't caught).
+- History replay: see below.
+
+**Separately, the runtime is ~8× slower than on 2026-10-12.** Uncached
+prompt processing ~27–30 tok/s (was ~190–250), generation ~10.5 tok/s (was
+23). Every penalty is multiplied by that. Investigated, on a temporary second
+Ollama server so the real one's settings stayed untouched:
+
+| Tried | Prompt tok/s | Gen tok/s |
+| :--- | ---: | ---: |
+| Current: flash attention on, KV q8_0, `cuda_v13` | 30 | 10.5 |
+| Flash attention off, KV f16 | 28 | 4.0 (VRAM 3.9 GB, nearly full) |
+| Flash attention on, KV f16 | 30 | 10.8 |
+| `cuda_v12` library | 30 | 11.0 |
+| CPU only (Vulkan request fell back) | 27 | 7.9 |
+
+- **Not the settings:** flash attention and the q8 cache are fine; keep
+  them (they save VRAM, and turning flash attention off made generation
+  worse). This closes F-11's open thread: both are set for the user account.
+- **Not throttling:** at "100% utilisation" the card draws ~15 W of its
+  30 W limit, sits at 1,350 MHz with the memory clock at full speed, and
+  reports no power, thermal or power-brake limit, only *GPU idle*. It is
+  waiting, not working: the GPU does no better than the CPU.
+- **Not the model file:** the Q4_K_M blob is unchanged since 2026-10-09.
+- **What changed:** Ollama 0.40.4 (new `llama-server` engine) and four
+  Windows updates, both on 2026-10-14. The laptop has not fully restarted
+  since 2026-10-15: 12.4 days, **50 sleep/resume cycles**, and the NVIDIA
+  driver logged an error (event 153) on 2026-10-15 09:43. Every fresh Ollama
+  process tested today was equally slow, so the problem is below Ollama.
+  Upstream llama.cpp couldn't be benchmarked: GitHub downloads ran at
+  ~0.3 KB/s today.
+- **Next:** a full restart, then re-measure. If it is still slow, install
+  Ollama 0.40.11 (already downloaded by Ollama's updater).
+
 ### F-19 · 2026-10-12 · Live red flag: "The sendme folder is now open in VS Code", and nothing opened
 User session (quick-ask, 18:28):
 
@@ -481,6 +546,9 @@ battery (PRD §8.7).
 | 2026-10-12 | Fact memory starts with projects: SQLite source of truth, summary in Chroma, named facts injected directly | F-18 |
 | 2026-10-12 | Apps get meanings (target, window) from the model; flags come from fixed profiles; VS Code via Code.exe | F-18 |
 | 2026-10-12 | False-claim gate armed until a tool acts (not just on the first pass); unreplaceable claims are cut | F-19 |
+| 2026-10-27 | One tool list per turn; the forced decision extends the cached prompt | F-20 |
+| 2026-10-27 | History replays tool calls (capped; outside content omitted; grounding from spoken text only) | F-20 |
+| 2026-10-27 | Keep flash attention + q8_0 KV cache (A/B: no speed cost, less VRAM) | F-20 |
 | 2026-10-09 | Bigger-model evals on Groq (free, no card) / Kaggle; AWS credits as backup | Free plan blocks GPUs; user prefers no card |
 
 ---
@@ -526,15 +594,13 @@ Work through in order. Record every result as a new finding.
 
 ## 6. Open threads
 
-- History suppresses native tool calls (F-17, fault 2): add eval cases with
-  chat history; consider replaying stored tool calls in the context window.
+- GPU at ~10% of its speed since ~2026-10-15 (F-20): restart the laptop,
+  re-measure; if still slow, install the downloaded Ollama 0.40.11.
+- A deterministic fast path for the commonest commands ("open X", volume,
+  media) would skip the model's decision entirely: proposed in F-20, not built.
 - Grow `cases.toml` from real 👎 traces; today's eval is hand-written only.
 - Local models kept (2026-10-10): `qwen3:4b-instruct` (default), `llama3.2`
   (previous default, kept for comparison), `nomic-embed-text` (memory). Removed to free disk:
   `qwen2.5:3b-instruct` (lost F-12), `qwen2.5-coder:3b`, `gemma4:e4b`.
   To reproduce F-12 exactly: `ollama pull qwen2.5:3b-instruct`.
 - Groq eval of `qwen3-32b` once the eval set is stable (needs a small adapter).
-- Why prompt processing is only ~250 tok/s on the 1650 Ti (F-11): check
-  whether `OLLAMA_FLASH_ATTENTION=1` / `OLLAMA_KV_CACHE_TYPE=q8_0` are
-  actually set for the Ollama service (they are only set by `run.bat` for its
-  own shell).

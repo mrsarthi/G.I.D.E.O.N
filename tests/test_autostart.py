@@ -169,3 +169,46 @@ def test_warm_up_prefills_the_real_prompt_prefix(monkeypatch):
     kwargs = fake.chat.call_args.kwargs
     assert kwargs["messages"][0]["content"] == STATIC_SYSTEM_PROMPT
     assert kwargs["options"]["num_ctx"] == NUM_CTX
+
+
+# ---------------------------------------------------------------------------
+#  Log noise (2026-10-27: health polls and network-drop tracebacks were most
+#  of a 5 MB engine log)
+# ---------------------------------------------------------------------------
+def _record(name, msg, args=(), exc=None):
+    import logging
+
+    exc_info = (type(exc), exc, None) if exc is not None else None
+    return logging.LogRecord(name, logging.ERROR, __file__, 1, msg, args, exc_info)
+
+
+def test_health_polls_are_not_logged():
+    from gideon.core.logs import QuietHealthChecks
+
+    quiet = QuietHealthChecks()
+    assert not quiet.filter(_record("uvicorn.access", '%s - "%s %s HTTP/%s" %d', ("127.0.0.1:1", "GET", "/api/health", "1.1", 200)))
+    assert quiet.filter(_record("uvicorn.access", '%s - "%s %s HTTP/%s" %d', ("127.0.0.1:1", "POST", "/api/chat", "1.1", 200)))
+
+
+def test_a_network_drop_is_one_warning_line():
+    import logging
+
+    from gideon.core.logs import NetworkDropsAsOneLine
+
+    network_error = type("NetworkError", (Exception,), {"__module__": "telegram.error"})
+    timed_out = type("TimedOut", (network_error,), {"__module__": "telegram.error"})
+    for exc in (network_error("httpx.ConnectError: getaddrinfo failed"), timed_out("Timed out")):
+        record = _record("telegram.ext.Updater", "Exception happened while polling for updates.", exc=exc)
+        assert NetworkDropsAsOneLine().filter(record)
+        assert record.levelno == logging.WARNING and record.exc_info is None
+        assert "retrying" in record.getMessage()
+
+
+def test_other_telegram_errors_keep_their_traceback():
+    import logging
+
+    from gideon.core.logs import NetworkDropsAsOneLine
+
+    record = _record("telegram.ext.Updater", "boom", exc=ValueError("a real bug"))
+    assert NetworkDropsAsOneLine().filter(record)
+    assert record.levelno == logging.ERROR and record.exc_info is not None

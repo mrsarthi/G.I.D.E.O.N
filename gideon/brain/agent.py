@@ -37,6 +37,7 @@ from gideon.brain.prompt import (
     build_context_window,
     fit_tool_result,
     format_messages_for_ollama,
+    spoken_messages,
     trim_to_budget,
 )
 from gideon.brain.router import ToolRouter
@@ -272,12 +273,12 @@ class Agent:
         nudged = False
         # What the user actually said, recently: tool arguments must come from
         # here, not from the model's imagination (never-assume, PRD §5.5).
-        grounding = "\n".join(
-            [m["content"] for m in context_messages[-GROUNDING_MESSAGES:]] + [user_prompt]
-        )
+        # Only what was said counts — not replayed tool results (F-20).
+        spoken = spoken_messages(context_messages)
+        grounding = "\n".join([m["content"] for m in spoken[-GROUNDING_MESSAGES:]] + [user_prompt])
         # What the forced decision routes on: this message and the exchange
         # before it, so a short answer ("in file explorer") keeps its subject.
-        routing_text = "\n".join([m["content"] for m in context_messages[-3:-1]] + [user_prompt])
+        routing_text = "\n".join([m["content"] for m in spoken[-3:-1]] + [user_prompt])
 
         # Read by tools (set_reminder) to learn where this turn came from.
         current_channel.set(channel)
@@ -411,7 +412,14 @@ class Agent:
                 candidates = self.router.select(
                     routing_text, offered_tools or channel_tools
                 )
-                forced = self._force_decision(messages, full_ans, candidates, options)
+                forced = self._force_decision(
+                    messages,
+                    full_ans,
+                    candidates,
+                    options,
+                    prompt_tools=offered_tools if offer_tools else [],
+                    trace=trace,
+                )
                 if forced is not None and forced["tool"] == "ask_user":
                     question = str(forced.get("question") or "").strip()
                     if question:
@@ -437,9 +445,8 @@ class Agent:
                         # The claim was already streamed; keep the real answer
                         # that follows from running into it.
                         yield "\n\n"
-                    offer_tools, offered_tools = True, candidates
-                    trace.tools_offered = True
-                    trace.tools_offered_names = [t["function"]["name"] for t in candidates]
+                    # The tool list stays what this turn started with: a
+                    # different list re-reads the whole prompt (F-20).
                     collected_tool_calls = [
                         {"name": forced["tool"], "arguments": forced["arguments"], "source": "forced"}
                     ]
@@ -565,26 +572,42 @@ class Agent:
         self,
         messages: list[dict[str, Any]],
         claim: str,
-        tools: list[dict[str, Any]],
+        candidates: list[dict[str, Any]],
         options: dict[str, Any],
+        *,
+        prompt_tools: list[dict[str, Any]],
+        trace: TraceRecorder,
     ) -> dict[str, Any] | None:
         """Ask again, with output constrained to a tool call or a question.
 
         F-15: a polite reminder did not work — qwen3:4b-instruct repeated its
         false claim word for word. Constrained decoding (PRD §10.1) leaves the
-        model no prose to fall back on: it must name one tool and its
-        arguments, or `ask_user` with a question. The result still goes
+        model no prose to fall back on: it must name one of `candidates` and
+        its arguments, or `ask_user` with a question. The result still goes
         through validation, policy and approvals like any other call.
+
+        F-20: the call reuses the pass it follows — same tool list
+        (`prompt_tools`) and same messages, with the claim and the instruction
+        appended — so Ollama reads only those new tokens. With `tools=[]` the
+        prompt changed from its first token (Qwen renders tools at the top)
+        and the whole conversation was read again: ~680 tokens here and
+        ~1,200 more in the reply pass, the "7-second penalty". The choice is
+        still limited to `candidates`, by the schema's enum.
         """
-        names = [t["function"]["name"] for t in tools]
+        names = [t["function"]["name"] for t in candidates]
         if not names:
             return None
-        catalog = "\n".join(
-            f"- {t['function']['name']}("
-            + ", ".join(t["function"].get("parameters", {}).get("properties", {}))
-            + f"): {t['function']['description'][:180]}"
-            for t in tools
-        )
+        if prompt_tools:
+            # The schemas are already in the prompt; naming the choices is enough.
+            choices = "Choose one of: " + ", ".join(names) + "."
+        else:
+            # No tools in the prompt (gating withheld them): describe them.
+            choices = "Available tools:\n" + "\n".join(
+                f"- {t['function']['name']}("
+                + ", ".join(t["function"].get("parameters", {}).get("properties", {}))
+                + f"): {t['function']['description'][:180]}"
+                for t in candidates
+            )
         schema = {
             "type": "object",
             "properties": {
@@ -595,25 +618,31 @@ class Agent:
             "required": ["tool", "arguments"],
         }
         prompt = (
-            f"{CLAIMED_ACTION_NUDGE}\n\nAvailable tools:\n{catalog}\n\n"
+            f"{CLAIMED_ACTION_NUDGE}\n\n{choices}\n\n"
             'Reply with JSON only: {"tool": <tool name, or "ask_user" if a detail '
             'is missing>, "arguments": {...}, "question": <only for ask_user>}.'
         )
+        record = trace.start_pass()
+        record["forced_candidates"] = names
+        stats: dict[str, Any] = {}
         try:
             response = self._chat(
                 model=self.model,
                 messages=[*messages, {"role": "assistant", "content": claim}, {"role": "user", "content": prompt}],
-                tools=[],
+                tools=prompt_tools,
                 stream=False,
                 format=schema,
                 options=options,
                 keep_alive=CHAT_KEEP_ALIVE,
                 **thinking_kwargs(self.model),
             )
+            stats = ollama_stats(response)
             decision = json.loads(extract_chunk_content(response) or "{}")
         except Exception as exc:
             log.warning("Forced tool decision failed: %s", exc)
             return None
+        finally:
+            trace.end_pass(record, stats)
         if not isinstance(decision, dict) or decision.get("tool") not in (*names, "ask_user"):
             return None
         if not isinstance(decision.get("arguments"), dict):

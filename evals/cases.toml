@@ -14,7 +14,9 @@
 #
 # Categories: tool (pick the right tool), slots (fill it correctly), chat
 # (no tool), clarify (never-assume, PRD §5.5), media (play vs. press play),
-# projects (windows, project folders, project knowledge).
+# projects (windows, project folders, project knowledge), history (commands
+# after earlier turns; a turn can be a stored tool call:
+#   { role = "tool_call", tool = "x", args = {...} } or { role = "tool", tool = "x", content = "..." }).
 #
 # Grow this file from real traces: every 👎 or correction is a candidate case.
 
@@ -736,3 +738,78 @@ id = "tricky-play-chat"
 prompt = "what's a good play to watch in London?"
 tools = ["none", "search_web"]
 category = "chat"
+
+# ---------------------------------------------------------------------------
+#  Commands after earlier turns (F-17 fault 2, F-20). With plain-chat history
+#  the model tends to answer a command in prose, and the harness has to force
+#  a decision; tool calls in the history (replayed since F-20) show it how
+#  earlier requests were handled. The report counts the forced calls.
+# ---------------------------------------------------------------------------
+[[case]]
+id = "history-chat-open-calc"
+prompt = "open calculator"
+tool = "launch_app"
+args = { app_name = "calc" }
+category = "history"
+history = [
+  { role = "user", content = "What is the date and time?" },
+  { role = "assistant", content = "It's Saturday, October 10, 2026 at 12:03 PM, sir." },
+  { role = "user", content = "Can you check the time for me please" },
+  { role = "assistant", content = "It's Saturday, October 10, 2026 at 12:04 PM, sir." },
+]
+
+[[case]]
+id = "history-chat-pause"
+prompt = "pause the music"
+tool = "control_media"
+args = { action = "play_pause" }
+category = "history"
+history = [
+  { role = "user", content = "Tell me a fun fact about octopuses" },
+  { role = "assistant", content = "Octopuses have three hearts and blue blood, boss." },
+]
+
+[[case]]
+id = "history-tools-open-calc"
+prompt = "open calculator"
+tool = "launch_app"
+args = { app_name = "calc" }
+category = "history"
+history = [
+  { role = "user", content = "What does the weather look like in varanasi today?" },
+  { role = "tool_call", tool = "get_weather", args = { location = "Varanasi" } },
+  { role = "tool", tool = "get_weather", content = "Clear sky, 24°C, humidity 61%. Today: high 27°C, low 19°C, 10% chance of rain." },
+  { role = "assistant", content = "It's clear and 24°C in Varanasi today, sir, with only a 10% chance of rain." },
+  { role = "user", content = "open spotify" },
+  { role = "tool_call", tool = "launch_app", args = { app_name = "spotify" } },
+  { role = "tool", tool = "launch_app", content = "Launched spotify successfully." },
+  { role = "assistant", content = "Spotify is open, boss." },
+]
+
+[[case]]
+id = "history-tools-weather-followup"
+prompt = "and in delhi?"
+tool = "get_weather"
+args = { location = "delhi" }
+category = "history"
+history = [
+  { role = "user", content = "What does the weather look like in varanasi today?" },
+  { role = "tool_call", tool = "get_weather", args = { location = "Varanasi" } },
+  { role = "tool", tool = "get_weather", content = "Clear sky, 24°C, humidity 61%. Today: high 27°C, low 19°C, 10% chance of rain." },
+  { role = "assistant", content = "It's clear and 24°C in Varanasi today, sir, with only a 10% chance of rain." },
+]
+
+[[case]]
+id = "history-tools-pause"
+prompt = "pause the music"
+tool = "control_media"
+args = { action = "play_pause" }
+category = "history"
+history = [
+  { role = "user", content = "play some lofi" },
+  { role = "tool_call", tool = "play_youtube_music", args = { query = "lofi" } },
+  { role = "tool", tool = "play_youtube_music", content = "Now playing: Lofi Girl — beats to relax/study to." },
+  { role = "assistant", content = "Lofi is playing, sir." },
+  { role = "user", content = "Tell me a fun fact about octopuses" },
+  { role = "assistant", content = "Octopuses have three hearts and blue blood, boss." },
+]

@@ -116,6 +116,12 @@ MEMORY_MIN_CHARS = _env_int("GIDEON_MEMORY_MIN_CHARS", 25)
 MEMORY_SNIPPET_CHARS = _env_int("GIDEON_MEMORY_SNIPPET_CHARS", 600)
 
 HISTORY_MESSAGE_LIMIT = _env_int("GIDEON_HISTORY_LIMIT", 30)
+# Replay earlier tool calls in the history as tool calls (with a short copy
+# of each result), not just the sentence that followed. Without them, past
+# turns look like plain chat and the model answers the next command in
+# prose instead of calling a tool (F-17 fault 2, F-20).
+HISTORY_TOOL_CALLS = _env_flag("GIDEON_HISTORY_TOOL_CALLS", True)
+HISTORY_TOOL_RESULT_CHARS = _env_int("GIDEON_HISTORY_TOOL_RESULT_CHARS", 240)
 # Longest tool output fed back to the model (~1,500 tokens). A 20,000-char
 # document dropped into an 8k context pushes the system prompt off the front.
 TOOL_RESULT_MAX_CHARS = _env_int("GIDEON_TOOL_RESULT_MAX_CHARS", 6000)

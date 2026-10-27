@@ -437,13 +437,13 @@ class DatabaseManager:
         """Fetch the last N messages, returned oldest-first."""
         with self._lock:
             rows = self.conn.execute(
-                """SELECT role, content FROM messages
+                """SELECT role, content, tool_name, tool_args FROM messages
                    WHERE session_id = ?
                    ORDER BY message_id DESC
                    LIMIT ?""",
                 (session_id, limit),
             ).fetchall()
-        return [ChatMessage(role, content) for role, content in reversed(rows)]
+        return [ChatMessage(*row) for row in reversed(rows)]
 
     def get_history(self, session_id: str) -> list[dict]:
         with self._lock:

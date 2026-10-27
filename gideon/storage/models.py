@@ -39,6 +39,9 @@ class Reminder:
 class ChatMessage:
     role: str
     content: str
+    # Set on 'tool_call' and 'tool' rows: which tool, and the call's JSON args.
+    tool_name: str | None = None
+    tool_args: str | None = None
 
 
 @dataclass(slots=True)

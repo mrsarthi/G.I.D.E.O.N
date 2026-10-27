@@ -172,6 +172,10 @@ def test_guessed_reminder_time_is_never_saved():
         "Yes boss, I can check your GPU temperature right now. Let me retrieve that for you.",
         "I don't have access to real-time weather data. Try a weather app.",
         "Certainly sir. I've triggered the media control to skip to the next track.",
+        # A bare past tense opening a sentence (2026-10-27, no tool call)
+        "Paused the music, sir.",
+        "Done. Opened Notepad for you.",
+        "Launched Calculator.",
     ],
 )
 def test_claims_are_detected(reply):
@@ -189,6 +193,9 @@ def test_claims_are_detected(reply):
         "Python has been around since 1991.",
         "That setting is now deprecated in newer versions.",
         "I can set reminders, open apps and check the weather for you.",
+        "Set theory is a branch of mathematics.",
+        "Opened in 1990, the museum is famous for its murals.",
+        "It started raining yesterday.",
     ],
 )
 def test_ordinary_replies_are_not_claims(reply):
@@ -245,9 +252,40 @@ def test_a_claim_with_tools_withheld_still_gets_a_decision():
         _, trace = _run(Agent(get_db(), None, chat=chat, tool_executor=fake_tool), "buy milk, on the list please")
 
     assert chat.calls[0]["tools"] == []
-    assert chat.calls[1]["format"] is not None
-    assert chat.calls[2]["tools"], "the follow-up pass must have tools"
-    assert trace["tools_offered"] is True
+    forced = chat.calls[1]
+    assert forced["format"] is not None
+    # No schemas in the prompt, so the choices are described in the request.
+    assert "save_note(" in forced["messages"][-1]["content"]
+    # One tool list per turn (F-20): the reply pass reuses the cached prompt.
+    assert chat.calls[2]["tools"] == []
+    names = [(c["name"], c["source"]) for p in trace["detail"]["passes"] for c in p["tool_calls"]]
+    assert names == [("save_note", "forced")]
+
+
+def test_the_forced_decision_reuses_the_cached_prompt():
+    """F-20: the "7-second penalty" was Ollama re-reading the conversation
+    because the retry dropped the tool list and the reply pass narrowed it.
+    Every call in the turn now sends the same tools and the same message
+    prefix, so only the appended tokens are new."""
+    chat = _chat(
+        "Yes boss. Notepad is now open.",
+        {"tool": "launch_app", "arguments": {"app_name": "notepad"}},
+        "Notepad is open, sir.",
+    )
+    reply, trace = _run(Agent(get_db(), None, chat=chat, tool_executor=fake_tool), "open notepad")
+
+    first, forced, follow_up = chat.calls
+    assert first["tools"], "tools were offered for this request"
+    assert forced["tools"] == first["tools"]
+    assert follow_up["tools"] == first["tools"]
+    # The retry extends the first pass's messages instead of rebuilding them.
+    assert forced["messages"][: len(first["messages"])] == first["messages"]
+    # Its choices are still limited, by the schema rather than the tool list.
+    assert "launch_app" in forced["format"]["properties"]["tool"]["enum"]
+    # And it is traced as a pass of its own, so its cost is visible.
+    forced_pass = trace["detail"]["passes"][1]
+    assert "launch_app" in forced_pass["forced_candidates"]
+    assert reply == "Notepad is open, sir."
 
 
 def test_an_unusable_decision_never_lets_the_claim_through():

@@ -240,7 +240,16 @@ def run(model: str = CHAT_MODEL, only: list[str] | None = None, progress: bool =
     for index, case in enumerate(cases, 1):
         session = db.create_session(f"eval {case.id}")
         for turn in case.history:
-            db.insert_message(session, turn["role"], turn["content"])
+            # A turn may be a stored tool call: { role = "tool_call", tool = "x", args = {...} }
+            # or its result: { role = "tool", tool = "x", content = "..." }.
+            tool_args = json.dumps(turn["args"]) if "args" in turn else None
+            db.insert_message(
+                session,
+                turn["role"],
+                turn.get("content") or f"[Tool Call: {turn.get('tool')}]",
+                tool_name=turn.get("tool", "none"),
+                tool_args=tool_args,
+            )
         events: list[dict[str, Any]] = []
         agent.record_user_message(session, case.prompt)
         agent.respond(session, case.prompt, channel="web", on_event=events.append)
@@ -321,6 +330,9 @@ def _summarise(
         ),
         "gated_misses": sum(1 for r in results if r["reason"] == "gated"),
         "text_tool_calls": sum(1 for r in results for c in r["calls"] if c["source"] == "text"),
+        # Commands the model answered in prose first, so the harness forced a
+        # decision: each one costs an extra model call (F-17, F-20).
+        "forced_calls": sum(1 for r in results for c in r["calls"] if c["source"] == "forced"),
         "failure_reasons": dict(
             Counter(r["reason"].split(":")[0] for r in results if not r["passed"]).most_common()
         ),
@@ -361,6 +373,7 @@ def render_markdown(report: dict[str, Any]) -> str:
     lines += [
         f"| Tools withheld by gating (missed) | {report['gated_misses']} |",
         f"| Tool calls typed as text | {report['text_tool_calls']} |",
+        f"| Tool calls forced after a prose reply | {report.get('forced_calls', '—')} |",
         f"| First text p50 / p90 | {lat['first_text_p50']} / {lat['first_text_p90']} ms |",
         f"| Whole turn p50 / p90 | {lat['total_p50']} / {lat['total_p90']} ms |",
         f"| Generation speed | {report['tokens_per_sec_mean']} tok/s |",
@@ -407,6 +420,7 @@ def compare(paths: list[Path]) -> str:
     for category in sorted({c for r in reports for c in r["categories"]}):
         row(category, [_pct(r["categories"].get(category, {"pct": None})) for r in reports])
     row("Gating misses", [str(r["gated_misses"]) for r in reports])
+    row("Forced tool calls", [str(r.get("forced_calls", "—")) for r in reports])
     row("First text p50", [f"{r['latency_ms']['first_text_p50']} ms" for r in reports])
     row("Whole turn p50", [f"{r['latency_ms']['total_p50']} ms" for r in reports])
     row("tok/s", [str(r["tokens_per_sec_mean"]) for r in reports])

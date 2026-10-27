@@ -27,6 +27,8 @@ from typing import Any
 from gideon.core.config import (
     CHARS_PER_TOKEN,
     HISTORY_MESSAGE_LIMIT,
+    HISTORY_TOOL_CALLS,
+    HISTORY_TOOL_RESULT_CHARS,
     MEMORY_RESERVE,
     NUM_CTX,
     RESPONSE_RESERVE,
@@ -36,9 +38,9 @@ from gideon.core.config import (
 from gideon.core.logs import get_logger
 from gideon.storage.db import DatabaseManager
 from gideon.storage.memory import TOOL_BOOKKEEPING_PREFIXES, VectorMemory
-from gideon.storage.models import PendingAction
+from gideon.storage.models import ChatMessage, PendingAction
 from gideon.storage.projects import mentioned_in
-from gideon.tools.registry import OLLAMA_TOOLS
+from gideon.tools.registry import OLLAMA_TOOLS, get_tool
 
 log = get_logger("gideon.brain.prompt")
 
@@ -163,6 +165,60 @@ def is_context_worthy(role: str, content: str) -> bool:
     return bool(content.strip())
 
 
+# What history says in place of a result from outside the user's control:
+# a web page or document replayed turn after turn would keep any instructions
+# injected into it in front of the model, beyond the turn whose taint
+# tracking (and approvals) covered it.
+OUTSIDE_RESULT_PLACEHOLDER = "[Result not repeated: outside content.]"
+
+
+def _replay_result(tool_name: str | None, content: str) -> str:
+    spec = get_tool(tool_name or "")
+    if spec is not None and spec.untrusted_output:
+        return OUTSIDE_RESULT_PLACEHOLDER
+    text = " ".join((content or "").split())
+    return text if len(text) <= HISTORY_TOOL_RESULT_CHARS else text[:HISTORY_TOOL_RESULT_CHARS].rstrip() + "…"
+
+
+def _history_message(row: ChatMessage) -> dict[str, Any] | None:
+    """A stored row as the model should see it again, or None to leave it out."""
+    if row.role == "tool_call":
+        if not HISTORY_TOOL_CALLS or not row.tool_name or row.tool_name == "none":
+            return None
+        try:
+            args = json.loads(row.tool_args or "{}")
+        except ValueError:
+            args = {}
+        return {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [{"function": {"name": row.tool_name, "arguments": args if isinstance(args, dict) else {}}}],
+        }
+    if row.role == "tool":
+        if not HISTORY_TOOL_CALLS or not row.tool_name or row.tool_name == "none":
+            return None
+        return {"role": "tool", "content": _replay_result(row.tool_name, row.content), "name": row.tool_name}
+    if not is_context_worthy(row.role, row.content):
+        return None
+    return {"role": row.role, "content": row.content}
+
+
+def _history_tokens(message: dict[str, Any]) -> int:
+    calls = message.get("tool_calls") or []
+    return estimate_tokens(str(message.get("content", ""))) + sum(
+        estimate_tokens(json.dumps(c["function"])) for c in calls
+    )
+
+
+def spoken_messages(context_messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """What the user and G.I.D.E.O.N said — not tool calls or tool results.
+
+    Never-assume grounds values in this (tools/validation.py): a value that
+    only appeared in a web result must not count as something the user said.
+    """
+    return [m for m in context_messages if m["role"] in _CONTEXT_ROLES and str(m.get("content", "")).strip()]
+
+
 def build_context_window(db: DatabaseManager, session_id: str) -> list[dict[str, Any]]:
     """Assemble recent conversation, newest-first, within the token budget."""
     rows = db.get_sliding_window(session_id, limit=HISTORY_MESSAGE_LIMIT)
@@ -172,13 +228,19 @@ def build_context_window(db: DatabaseManager, session_id: str) -> list[dict[str,
     token_count = 0
 
     for row in reversed(rows):
-        if not is_context_worthy(row.role, row.content):
+        message = _history_message(row)
+        if message is None:
             continue
-        msg_tokens = estimate_tokens(row.content)
+        msg_tokens = _history_tokens(message)
         if token_count + msg_tokens > budget:
             break
-        context_messages.insert(0, {"role": row.role, "content": row.content})
+        context_messages.insert(0, message)
         token_count += msg_tokens
+
+    # History starts at something the user said: a tool exchange cut off from
+    # the request that caused it reads as G.I.D.E.O.N acting unprompted.
+    while context_messages and context_messages[0]["role"] != "user":
+        context_messages.pop(0)
 
     log.debug(
         "Context: %d messages, ~%d tokens (budget %d)",
@@ -334,6 +396,10 @@ def trim_to_budget(messages: list[dict[str, Any]], tools_offered: bool) -> list[
             break
         trimmed.pop(1)
         dropped += 1
+        # Never leave a tool result whose call was just dropped.
+        while len(trimmed) > 2 and trimmed[1].get("role") == "tool":
+            trimmed.pop(1)
+            dropped += 1
 
     if dropped:
         log.info("Dropped %d history message(s) to fit the context window", dropped)
