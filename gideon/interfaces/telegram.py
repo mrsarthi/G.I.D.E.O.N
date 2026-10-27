@@ -32,6 +32,8 @@ log = get_logger("gideon.telegram")
 
 # Telegram rejects messages over 4096 characters.
 _CHUNK = 4000
+# Background retries of the first connection back off to this.
+_MAX_RETRY_SECONDS = 300
 # Seconds between edits of a reply that is still being written. Telegram
 # throttles a bot that edits one chat much faster than about once a second.
 _EDIT_INTERVAL = 1.2
@@ -78,6 +80,8 @@ class GideonTelegramDaemon:
         self.allowed_users = allowed_users
         self.send_voice = send_voice
         self.app: Any = None
+        # Retries the first connection in the background (see start()).
+        self._starter: asyncio.Task | None = None
 
     def is_configured(self) -> bool:
         """A token alone is not enough — an empty allowlist is not a valid config.
@@ -183,28 +187,56 @@ class GideonTelegramDaemon:
             await producer
         await reply.show(text if text.strip() else _NO_OUTPUT)
 
-    async def start(self) -> None:
+    async def start(self, first_retry_seconds: float = 15.0) -> None:
+        """Connect now if possible; otherwise keep trying in the background.
+
+        One failed attempt used to leave the bot off until the next engine
+        restart (2026-10-27: "Timed out" on a slow network). The engine starts
+        at boot, often before Wi-Fi is up, so the first try failing is normal.
+        """
         if not self.is_configured():
             log.info("Telegram bot token not provided (GIDEON_TELEGRAM_BOT_TOKEN empty). Skipping daemon.")
             return
-
         try:
-            from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
-
-            self.app = ApplicationBuilder().token(self.token).build()
-
-            self.app.add_handler(CommandHandler("start", self._handle_start))
-            self.app.add_handler(
-                MessageHandler(filters.TEXT & ~filters.COMMAND, self._handle_message)
-            )
-
-            await self.app.initialize()
-            await self.app.start()
-            if self.app.updater:
-                await self.app.updater.start_polling(drop_pending_updates=True)
-            log.info("G.I.D.E.O.N Telegram Bot daemon started successfully.")
+            await self._start_once()
         except Exception as err:
-            log.error("Failed to start Telegram Bot daemon: %s", err, exc_info=True)
+            log.warning(
+                "Telegram Bot daemon not started (%s); retrying in the background", err or type(err).__name__
+            )
+            self._starter = asyncio.create_task(self._retry_start(first_retry_seconds))
+
+    async def _retry_start(self, delay: float) -> None:
+        while True:
+            await asyncio.sleep(delay)
+            try:
+                await self._start_once()
+                return
+            except Exception as err:
+                delay = min(delay * 2, _MAX_RETRY_SECONDS)
+                log.warning("Telegram Bot daemon still not started (%s); next try in %.0fs", err or type(err).__name__, delay)
+
+    async def _start_once(self) -> None:
+        from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
+
+        app = ApplicationBuilder().token(self.token).build()
+        app.add_handler(CommandHandler("start", self._handle_start))
+        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self._handle_message))
+        try:
+            await app.initialize()
+            await app.start()
+            if app.updater:
+                await app.updater.start_polling(drop_pending_updates=True)
+        except BaseException:
+            # Half-started: release what was opened before the next attempt.
+            try:
+                if app.running:
+                    await app.stop()
+                await app.shutdown()
+            except Exception as cleanup_err:
+                log.debug("Telegram cleanup after a failed start: %s", cleanup_err)
+            raise
+        self.app = app
+        log.info("G.I.D.E.O.N Telegram Bot daemon started successfully.")
 
     async def send_message(self, chat_id: int | str, text: str) -> bool:
         """Push an unprompted message into a chat. Returns True on success."""
@@ -273,6 +305,13 @@ class GideonTelegramDaemon:
         return await self.broadcast(text, audio_path) > 0
 
     async def stop(self) -> None:
+        if self._starter is not None:
+            self._starter.cancel()
+            try:
+                await self._starter
+            except (asyncio.CancelledError, Exception):
+                pass
+            self._starter = None
         if self.app:
             try:
                 log.info("Shutting down G.I.D.E.O.N Telegram Bot daemon...")

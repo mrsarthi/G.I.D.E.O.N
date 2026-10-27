@@ -212,3 +212,57 @@ def test_other_telegram_errors_keep_their_traceback():
     record = _record("telegram.ext.Updater", "boom", exc=ValueError("a real bug"))
     assert NetworkDropsAsOneLine().filter(record)
     assert record.levelno == logging.ERROR and record.exc_info is not None
+
+
+# ---------------------------------------------------------------------------
+#  Telegram retries its first connection (2026-10-27: one "Timed out" at
+#  engine start left the bot off until the next restart)
+# ---------------------------------------------------------------------------
+def test_telegram_keeps_trying_until_the_network_is_up():
+    import asyncio
+
+    from gideon.interfaces.telegram import GideonTelegramDaemon
+
+    daemon = GideonTelegramDaemon(token="123:abc", allowed_users={1})
+    attempts = []
+
+    async def flaky_start():
+        attempts.append(1)
+        if len(attempts) < 3:
+            raise TimeoutError("Timed out")
+        daemon.app = "connected"
+
+    daemon._start_once = flaky_start
+
+    async def scenario():
+        await daemon.start(first_retry_seconds=0.01)
+        assert daemon.app is None  # the first try failed, but start() returned
+        for _ in range(100):
+            if daemon.app:
+                break
+            await asyncio.sleep(0.01)
+
+    asyncio.run(scenario())
+    assert daemon.app == "connected"
+    assert len(attempts) == 3
+
+
+def test_stopping_cancels_the_retries():
+    import asyncio
+
+    from gideon.interfaces.telegram import GideonTelegramDaemon
+
+    daemon = GideonTelegramDaemon(token="123:abc", allowed_users={1})
+
+    async def never_connects():
+        raise TimeoutError("Timed out")
+
+    daemon._start_once = never_connects
+
+    async def scenario():
+        await daemon.start(first_retry_seconds=0.01)
+        await asyncio.sleep(0.05)
+        await daemon.stop()
+        assert daemon._starter is None
+
+    asyncio.run(scenario())
