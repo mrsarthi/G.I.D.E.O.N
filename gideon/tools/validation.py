@@ -50,13 +50,10 @@ def _words(text: str) -> set[str]:
 _POINTERS = frozenset(["that", "this", "it", "these", "those", "them", "something", "stuff"])
 
 
-def is_informative(value: Any) -> bool:
-    """Whether `value` says anything beyond filler and pointing words.
-
-    Not the tool's `ground_ignore` words: those are poor *evidence* but can be
-    real values (search_web(query="news")).
-    """
-    ignored = {_stem(w) for w in _STOPWORDS | _POINTERS}
+def is_informative(value: Any, filler: tuple[str, ...] = ()) -> bool:
+    """Whether `value` says anything beyond filler, pointing words and the
+    parameter's own instruction words (`Param.filler`)."""
+    ignored = {_stem(w) for w in _STOPWORDS | _POINTERS | {w.lower() for w in filler}}
     return any(w not in ignored for w in _words(str(value)))
 
 
@@ -142,7 +139,8 @@ def check_call(spec: ToolSpec, arguments: dict[str, Any], grounding: str) -> Slo
         if not param.grounded and param.evidence is None:
             continue
         value = args[present[0]]
-        if param.required and not is_informative(value):
+        filler = param.filler if param.filler is not None else param.ground_ignore
+        if param.required and not is_informative(value, filler):
             # set_clipboard(text="That") for "copy that to my clipboard":
             # the value is present but says nothing, so it is still missing.
             result.missing.append(param)

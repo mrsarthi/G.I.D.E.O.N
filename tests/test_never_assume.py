@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 import pytest
 
-from gideon.brain.agent import CLAIMED_ACTION_NUDGE, Agent, OpeningGate
+from gideon.brain.agent import CLAIMED_ACTION_NUDGE, CLARIFY_REPLY, Agent, OpeningGate
 from gideon.brain.intent import NOT_DONE_REPLY, claims_action, is_command, strip_claims
 from gideon.evals.runner import Case, fake_tool, score
 from gideon.storage.db import get_db
@@ -462,6 +462,7 @@ def test_an_uncaught_state_claim_now_forces_a_real_call():
         ("Can you open a new instance of vs code please", True),
         ("hey gideon, set a reminder for 5", True),
         ("put on some Arctic Monkeys", True),
+        ("review the code I just copied", True),
         ("I want to start running in the mornings, any tips?", False),
         ("what is the weather in delhi?", False),
         ("Vs code please", False),
@@ -513,3 +514,23 @@ def test_a_premature_claim_beside_a_real_call_is_dropped_quietly():
     assert reply == "Arctic Monkeys are playing, boss."
     # The next pass doesn't see the premature claim as something it said.
     assert all("Playing Arctic Monkeys now" not in str(m.get("content")) for m in calls[1]["messages"])
+
+
+
+def test_the_request_repeated_is_not_a_value():
+    """Eval 2026-10-27: set_clipboard(text="Copy that to your clipboard") ran."""
+    check = check_call(get_tool("set_clipboard"), {"text": "Copy that to your clipboard"}, "copy that to my clipboard")
+    assert check.problem() == "missing:text"
+
+
+def test_a_generic_query_can_still_be_the_query():
+    """search_web's "news" and "latest" are poor evidence but real content."""
+    check = check_call(get_tool("search_web"), {"query": "latest news"}, "what's the latest news?")
+    assert check.ok
+
+
+def test_ask_user_without_a_question_still_asks():
+    chat = _chat("I'll copy that for you.", {"tool": "ask_user", "arguments": {}, "question": ""})
+    reply, trace = _run(Agent(get_db(), None, chat=chat), "copy that to my clipboard")
+    assert reply == CLARIFY_REPLY
+    assert trace["outcome"] == "clarified"

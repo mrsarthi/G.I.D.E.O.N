@@ -80,6 +80,8 @@ CLAIMED_ACTION_NUDGE = (
     "call the tool now. If a detail is missing, ask the user for it in one short "
     "question. Do not say it is done unless a tool has done it."
 )
+# Asked when a forced decision chose ask_user but wrote no question.
+CLARIFY_REPLY = "Could you tell me a bit more about what you'd like me to do?"
 # Tools start a refusal this way ("Not opened: …", "Not run: …"): the tool
 # was called but did nothing.
 REFUSAL_PREFIX = "Not "
@@ -428,7 +430,7 @@ class Agent:
                     trace=trace,
                 )
                 if forced is not None and forced["tool"] == "ask_user":
-                    question = str(forced.get("question") or "").strip()
+                    question = str(forced.get("question") or "").strip() or CLARIFY_REPLY
                     if question:
                         trace.stages["forced_question"] = trace.elapsed_ms()
                         blocked_any = True  # outcome: clarified
@@ -627,12 +629,15 @@ class Agent:
                 "arguments": {"type": "object"},
                 "question": {"type": "string"},
             },
-            "required": ["tool", "arguments"],
+            # Required: an ask_user without its question once left nothing
+            # to say but "I haven't done that yet" (eval, 2026-10-27).
+            "required": ["tool", "arguments", "question"],
         }
         prompt = (
             f"{CLAIMED_ACTION_NUDGE}\n\n{choices}\n\n"
             'Reply with JSON only: {"tool": <tool name, or "ask_user" if a detail '
-            'is missing>, "arguments": {...}, "question": <only for ask_user>}.'
+            'is missing>, "arguments": {...}, "question": <the question for ask_user, '
+            'else "">}.'
         )
         record = trace.start_pass()
         record["forced_candidates"] = names

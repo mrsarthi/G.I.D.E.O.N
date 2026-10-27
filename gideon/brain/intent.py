@@ -269,7 +269,7 @@ _STATE_WORDS = re.compile(
 _COMMAND = re.compile(
     r"^\W*(?:(?:hey|ok|okay|yo)\s+gideon\W*)?(?:please\s+|kindly\s+|just\s+)?"
     r"(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?|i\s+(?:want|need)\s+you\s+to\s+|go\s+ahead\s+and\s+)?"
-    rf"(?:{_ACTION_VERBS})\w*\b",
+    rf"(?:{_ACTION_VERBS}|review)\w*\b",
     re.IGNORECASE,
 )
 

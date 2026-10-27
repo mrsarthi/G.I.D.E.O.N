@@ -115,6 +115,8 @@ def _search_wikipedia(query: str) -> list[str]:
         aliases=("search_query", "q"),
         grounded=True,
         ground_ignore=("search", "web", "online", "look", "up", "latest", "news"),
+        # "latest news" is a real query, though too generic to prove one.
+        filler=("search", "web", "online", "look", "up"),
     ),
     untrusted_output=True,
     triggers={

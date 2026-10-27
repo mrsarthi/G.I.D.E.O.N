@@ -59,6 +59,12 @@ class Param:
     # grounded when the user said one of its words — "another window" for
     # window="new" — rather than the value itself.
     evidence: dict[str, tuple[str, ...]] | None = field(default=None, hash=False)
+    # Words that say nothing as this parameter's value: a required value made
+    # only of these (plus filler) counts as missing. Defaults to
+    # `ground_ignore` — set_clipboard(text="Copy that to your clipboard") is
+    # the request repeated, not something to copy. Set it where an ignored
+    # word can be a real value (search_web's query "latest news").
+    filler: tuple[str, ...] | None = None
 
     def schema(self) -> dict[str, Any]:
         body: dict[str, Any] = {"type": self.type}
