@@ -198,7 +198,8 @@ Ollama server so the real one's settings stayed untouched:
   out at 90 s before succeeding on retry.
 - **Next:** benchmark upstream llama.cpp (`llama-bench`, CUDA 12 build) on
   the same model file. Fast means Ollama's build; equally slow means Windows
-  or the driver.
+  or the driver. The official b11919 build is downloaded (in the session
+  scratchpad); running a downloaded program needs the user's go-ahead.
 
 ### F-19 · 2026-10-12 · Live red flag: "The sendme folder is now open in VS Code", and nothing opened
 User session (quick-ask, 18:28):
