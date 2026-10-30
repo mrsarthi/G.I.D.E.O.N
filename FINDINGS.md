@@ -32,6 +32,38 @@ not transfer to System 2; **ratios and causes will**.
 
 ## 2. Findings
 
+### F-25 · 2026-10-30 · News, football and market overview; on battery a tool turn now takes 12+ minutes
+**Added:** `get_news` (Google News RSS by section, edition from
+`GIDEON_REGION`; football stories from ESPN), `get_football` (ESPN's public
+soccer endpoints: a club's results and fixtures across competitions, a
+league's week, tables), and a market overview in `get_financial_data`
+(`symbol="market"`, one batched yfinance request). No keys or accounts.
+Measured live: news 1.7–2.9 s, a club 2–2.7 s (5.2 s on the first call, which
+loads every domestic league's club list for the day), a table 2 s, the
+overview 2.7–3 s. The tool schemas grew from ~2,690 to ~2,980 tokens
+(24 tools).
+
+**Never-assume carried over:** a section, league or view the user did not
+name is dropped (`Param.evidence`, keyed by the raw values the model sends,
+since evidence is checked before `normalize`); "madrid" comes back as
+"Real or Atlético?"; an unknown club is reported, not guessed. Plain names
+map to tickers ("nifty", "gold", "dollar to rupee"); a bare "ETH"/"BTC" is a
+different Yahoo listing. `symbol` stays required, so "what's the stock
+price?" still asks.
+
+**Battery finding (first real question after the restart):** "can you get me
+the latest el classico scores" ran a single CPU pass for **12 m 35 s** and
+was still reading the prompt when stopped: 5,015 prompt tokens, a cold cache,
+and prompt processing that slowed from **17 to 8 tok/s** as the context grew
+(4,096 tokens took 513 s). F-04 measured ~19 tok/s over ~3,100 tokens. The
+prompt is now 60% larger, mostly tool schemas, and the per-token speed falls
+with length. A graceful restart then waited on that request. The question also
+named no club: "el clasico" now resolves to Barcelona, whose results include
+the match.
+
+**Eval:** 10 news/football cases, 4 market cases and the clásico case added
+(123). The run is pending AC power (F-01).
+
 ### F-24 · 2026-10-30 · Baseline on the restored runtime: 95.4%, after finding a regression I caused
 The first full eval on Ollama 0.35.1 scored **79.6%**: only 22 of 76 tool
 cases got a native first call (58 on 2026-10-27), 42 decisions had to be
@@ -820,6 +852,12 @@ Work through in order. Record every result as a new finding.
 ---
 
 ## 6. Open threads
+
+- On battery a tool-enabled turn takes 10+ minutes (F-25): CPU prompt
+  processing of ~5,000 tokens at 17 → 8 tok/s. Options to measure: offer
+  only the router's top tools on battery (roughly halves the prompt), drop
+  flash attention / the q8_0 KV cache on CPU, more threads, and Windows'
+  battery power plan.
 
 - Ollama is pinned at 0.35.1 with auto-update off (F-20). Before updating,
   check that a newer Ollama is fast on a GTX 16-series card (re-run the F-20

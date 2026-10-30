@@ -434,6 +434,13 @@ args = { league = "indian super league" }
 category = "slots"
 
 [[case]]
+id = "football-clasico"
+prompt = "can you get me the latest el classico scores"
+tool = "get_football"
+args = { team = "clas" }
+category = "slots"
+
+[[case]]
 id = "football-chat"
 prompt = "I love watching football with my friends on weekends"
 tool = "none"

@@ -68,6 +68,12 @@ _TEAM_ALIASES = {
     "atleti": "atletico madrid",
     "juve": "juventus",
     "bayern": "bayern munich",
+    # Fixture nicknames: a club's results include the match (2026-10-30: "the
+    # latest el classico scores" named no club).
+    "el clasico": "barcelona",
+    "clasico": "barcelona",
+    "el classico": "barcelona",
+    "classico": "barcelona",
 }
 _NOISE_WORDS = frozenset(["fc", "cf", "afc", "sc", "the", "club"])
 
@@ -485,7 +491,7 @@ def _league_name(value: Any) -> str | None:
         "arsenal", "chelsea", "liverpool", "tottenham", "spurs", "everton", "newcastle",
         "barcelona", "barca", "madrid", "atletico", "sevilla", "bayern", "dortmund", "leverkusen",
         "juventus", "juve", "napoli", "inter", "milan", "roma", "psg", "marseille", "bengaluru",
-        "bagan", "blasters",
+        "bagan", "blasters", "clasico", "classico", "derby",
     },
 )
 def get_football(team: str | None = None, league: str | None = None, view: str = "matches") -> str:

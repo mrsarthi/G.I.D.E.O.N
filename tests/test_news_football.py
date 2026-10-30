@@ -130,6 +130,9 @@ def test_team_names_resolve_by_name_nickname_alias_and_typo():
     assert find_team("Barca", TEAMS).id == "83"
     assert find_team("atletico", TEAMS).id == "1068"
     assert find_team("Barcelonna", TEAMS).id == "83"
+    # "the latest el classico scores": Barcelona's results include it.
+    assert find_team("El Classico", TEAMS).id == "83"
+    assert find_team("el clásico", TEAMS).id == "83"
 
 
 def test_a_name_that_fits_several_clubs_is_a_question():
