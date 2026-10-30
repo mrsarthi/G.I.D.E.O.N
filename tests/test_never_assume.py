@@ -560,3 +560,16 @@ def test_a_long_answer_is_checked_at_its_opening_only():
     reply, _ = _run(Agent(get_db(), None, chat=chat), "I want to start running in the mornings, any tips?")
     assert reply == tips
     assert len(chat.calls) == 1, "no forced decision"
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        "Yes boss. Good morning to you. I'm ready to assist with any tasks. How can I help you today?",
+        "I'll address that in a moment.",
+        "I'm really glad to help.",
+    ],
+)
+def test_words_that_merely_start_like_actions_are_not_claims(reply):
+    """2026-10-30: "I'm ready" matched "read" and a greeting got a forced question."""
+    assert not claims_action(reply)

@@ -32,6 +32,19 @@ not transfer to System 2; **ratios and causes will**.
 
 ## 2. Findings
 
+### F-22 · 2026-10-30 · A greeting set off the false-claim check and pulled in the repo's facts
+A probe of "good morning gideon" on the restored runtime returned a greeting
+about the G.I.D.E.O.N repository ("latest updates committed on October
+27th"), then a forced question ("What would you like me to do for you
+today?"). Two causes:
+- **"I'm ready" matched "read"**: the claim patterns allowed any ending after
+  an action verb. Words that only start like one (ready, really, address,
+  listen, settle…) are now excluded (`_NOT_ACTIONS`).
+- **"gideon" named the G.I.D.E.O.N project**, so every message addressed to
+  the assistant loaded the repo's facts into the prompt. A project named like
+  the assistant now only counts when the message is about code (project,
+  repo, branch, VS Code…), for vector recall too.
+
 ### F-21 · 2026-10-27 · "Boss, … sir": the addressing rule is now enforced in code
 User report: G.I.D.E.O.N says "boss"/"sir" too often, often at both ends of
 a reply. In the last 300 stored replies, **53 had two or more** and **103
@@ -229,6 +242,20 @@ v-vk64.json` it starts in ~10 s.
   `VK_DRIVER_FILES`) triples prompt reading but not generation.
 - **For System 2:** prefer a GPU with tensor cores (RTX); current llama.cpp
   is not tuned for the GTX 16 series.
+- **Resolved 2026-10-30: rolled back to Ollama 0.35.1, auto-update off.**
+  Same benchmark: **prompts 178 tok/s, generation 46 tok/s**; the GPU boosts
+  to 1,950 MHz at ~35 W, against 1,350 MHz at 15 W before. Correction to the
+  cause above: 0.35.1 *also* runs `llama-server` and prints the same
+  tensor-core warning, so the regression is in the newer llama.cpp bundled
+  with 0.40.x, not a change of engine. The cached 0.40.13 update was deleted
+  first (with the user's OK), or Ollama would have re-upgraded itself at
+  start-up, as it did on 2026-10-27.
+- **The 2-minute stall at every Ollama start:** GPU discovery waits ~120 s
+  for the hung AMD Vulkan probe. The user's first message after the rollback
+  sat 77 s in memory recall (embedding through Ollama), and the window gave
+  up. `OLLAMA_VULKAN=0` (set for the user account) cuts discovery to **4 s**;
+  CUDA, which is what Ollama uses here, is unaffected. It applies from the
+  next Ollama start.
 
 ### F-19 · 2026-10-12 · Live red flag: "The sendme folder is now open in VS Code", and nothing opened
 User session (quick-ask, 18:28):
@@ -727,10 +754,9 @@ Work through in order. Record every result as a new finding.
 
 ## 6. Open threads
 
-- GPU at ~10% of its speed since 2026-10-14 (F-20): current llama.cpp's
-  tensor-core path on a GTX 16-series card. Decided 2026-10-27: roll back to
-  Ollama 0.35.1 and pause its updates, on the user's go, unless an Ollama
-  release fixes it first (check the release notes before downloading).
+- Ollama is pinned at 0.35.1 with auto-update off (F-20). Before updating,
+  check that a newer Ollama is fast on a GTX 16-series card (re-run the F-20
+  benchmark) — or wait for System 2's GPU.
 - A deterministic fast path for the commonest commands ("open X", volume,
   media) would skip the model's decision entirely: proposed in F-20, not built.
 - Forced decisions with empty arguments (F-20): add a second constrained call

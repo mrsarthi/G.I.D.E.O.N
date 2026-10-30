@@ -167,6 +167,15 @@ _ACTION_VERBS = (
     r"schedule|queue|skip|pause|resume|lower|raise|make|made|write|written|jot|"
     r"retriev|grab|bring|trigger|switch|send|sent|load|skip|stop|resum|adjust|chang|clos|launch|press|hit"
 )
+# Words that start like an action verb but aren't one: "I'm ready" matched
+# "read" (2026-10-30, a greeting got a forced follow-up question), and
+# "I'll address that" / "I'll listen" would match "add" / "list".
+_NOT_ACTIONS = (
+    r"ready|really|realiz|realis|address|addition|listen|settl|openly|playful|"
+    r"showcas|noteworth|lookout|market|startl|copyright"
+)
+# An action verb in any inflection: "check", "checking", "checked".
+_ACTION_WORD = rf"(?!{_NOT_ACTIONS})(?:{_ACTION_VERBS})\w*\b"
 # Things only a tool could know. "Here are your reminders: 1. Meeting at 3pm…"
 # without a tool call is invented data (measured on qwen3:4b-instruct, F-15).
 _PERSONAL_DATA = (
@@ -177,15 +186,14 @@ _CLAIM_PATTERNS = (
     # "I'll check", "I will set", "I've added", "Let me open", "I'm going to play"
     re.compile(
         r"\b(?:i['’]?ll|i\s+will|i['’]?m\s+going\s+to|let\s+me|i['’]?ve|i\s+have|i\s+am|i['’]?m)"
-        r"\s+(?:now\s+|go\s+ahead\s+and\s+|just\s+|quickly\s+|also\s+)?"
-        rf"(?:{_ACTION_VERBS})\w*\b",
+        r"\s+(?:now\s+|go\s+ahead\s+and\s+|just\s+|quickly\s+|also\s+)?" + _ACTION_WORD,
         re.IGNORECASE,
     ),
     # "I can check your GPU temperature right now." — an offer made instead of
     # the call (eval, 2026-10-12). Needs "right now/away" so describing what
     # G.I.D.E.O.N can do ("I can set reminders for you") is not a claim.
     re.compile(
-        rf"\bi\s+can\s+(?:{_ACTION_VERBS})\w*\b[^.!?\n]{{0,60}}\bright\s+(?:now|away)\b",
+        rf"\bi\s+can\s+{_ACTION_WORD}[^.!?\n]{{0,60}}\bright\s+(?:now|away)\b",
         re.IGNORECASE,
     ),
     # "Checking your GPU now…", "Yes boss. Opening Notepad." The gerund needs
@@ -274,7 +282,7 @@ _STATE_WORDS = re.compile(
 _COMMAND = re.compile(
     r"^\W*(?:(?:hey|ok|okay|yo)\s+gideon\W*)?(?:please\s+|kindly\s+|just\s+)?"
     r"(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?|i\s+(?:want|need)\s+you\s+to\s+|go\s+ahead\s+and\s+)?"
-    rf"(?:{_ACTION_VERBS}|review)\w*\b",
+    rf"(?!{_NOT_ACTIONS})(?:{_ACTION_VERBS}|review)\w*\b",
     re.IGNORECASE,
 )
 

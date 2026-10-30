@@ -21,6 +21,7 @@ Design notes that are easy to break:
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime
 from typing import Any
 
@@ -39,7 +40,7 @@ from gideon.core.logs import get_logger
 from gideon.storage.db import DatabaseManager
 from gideon.storage.memory import TOOL_BOOKKEEPING_PREFIXES, VectorMemory
 from gideon.storage.models import ChatMessage, PendingAction
-from gideon.storage.projects import mentioned_in
+from gideon.storage.projects import mentioned_in, name_key
 from gideon.tools.registry import OLLAMA_TOOLS, get_tool
 
 log = get_logger("gideon.brain.prompt")
@@ -284,21 +285,37 @@ def retrieve_memories(memory: VectorMemory | None, user_prompt: str) -> tuple[st
 MAX_PROJECT_FACTS = 3
 
 
+# Words that make a message about code, not just addressed to the assistant.
+_PROJECT_TALK = re.compile(
+    r"\b(?:projects?|repo|repository|code|codebase|folder|branch|commits?|git|vs\s?code|explorer)\b",
+    re.IGNORECASE,
+)
+
+
 def project_facts(db: DatabaseManager, user_prompt: str, recalled: list[str]) -> str:
     """Facts for this turn: projects the user named, then recalled ones.
 
     A named project is matched by name in the message (storage/projects.py)
     rather than left to vector recall: "open dumbpipe" must bring dumbpipe's
     folder and state, deterministically.
+
+    "Good morning gideon" names the assistant, not the G.I.D.E.O.N repository:
+    a project named like the assistant only counts when the message is about
+    code (2026-10-30: every greeting loaded the repo's facts, and the reply
+    talked about its commits).
     """
     try:
-        mentioned = [p.summary for p in mentioned_in(user_prompt, db.list_projects())]
+        projects = db.list_projects()
+        assistant = name_key(db.get_user_profile().get("assistant_name", "G.I.D.E.O.N"))
+        about_code = bool(_PROJECT_TALK.search(user_prompt))
+        own = {p.summary for p in projects if name_key(p.name) == assistant}
+        mentioned = [p.summary for p in mentioned_in(user_prompt, projects)]
     except Exception as exc:
         log.error("Project lookup failed: %s", exc)
-        mentioned = []
+        own, about_code, mentioned = set(), True, []
     chosen: list[str] = []
     for summary in [*mentioned, *recalled]:
-        if summary and summary not in chosen:
+        if summary and summary not in chosen and (about_code or summary not in own):
             chosen.append(summary)
     return "\n".join(f"- {s}" for s in chosen[:MAX_PROJECT_FACTS])
 

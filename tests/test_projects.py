@@ -291,3 +291,17 @@ def test_project_named_as_the_app_with_its_path_as_target(launched, tmp_path):
     reply = desktop.launch_app("sendme", target=str(tmp_path / "sendme"))
     assert launched == []
     assert "Ask the user which app" in reply
+
+
+def test_greeting_the_assistant_is_not_asking_about_its_repo(tmp_path):
+    """2026-10-30: "good morning gideon" loaded the G.I.D.E.O.N repo's facts and
+    the greeting came back talking about commits."""
+    _project(tmp_path, "G.I.D.E.O.N", "pyproject.toml")
+    _project(tmp_path, "dumbpipe")
+    ProjectIndex(get_db(), None, roots=[tmp_path], vscode_dir=tmp_path / "none").refresh()
+    assert project_facts(get_db(), "good morning gideon", recalled=[]) == ""
+    assert "G.I.D.E.O.N" in project_facts(get_db(), "how's the gideon project doing?", recalled=[])
+    assert "G.I.D.E.O.N" in project_facts(get_db(), "open gideon in vs code", recalled=[])
+    # A recalled summary of the repo is held back the same way.
+    own = next(p.summary for p in get_db().list_projects() if p.name == "G.I.D.E.O.N")
+    assert project_facts(get_db(), "hey gideon, thanks", recalled=[own]) == ""
