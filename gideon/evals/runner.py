@@ -21,6 +21,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import re
 import statistics
 import time
 import tomllib
@@ -61,6 +62,10 @@ class Case:
     forbid: list[str] = field(default_factory=list)
     history: list[dict[str, str]] = field(default_factory=list)
     expect: list[str] = field(default_factory=list)  # the reply must mention each
+    # Spoken style: at most this many words, and no lists or markdown.
+    max_words: int = 0
+    # Asked for detail: at least this many words.
+    min_words: int = 0
 
 
 def load_cases(path: Path = CASES_FILE) -> list[Case]:
@@ -79,6 +84,8 @@ def load_cases(path: Path = CASES_FILE) -> list[Case]:
                 forbid=list(entry.get("forbid", [])),
                 history=list(entry.get("history", [])),
                 expect=[str(e) for e in entry.get("expect", [])],
+                max_words=int(entry.get("max_words", 0)),
+                min_words=int(entry.get("min_words", 0)),
             )
         )
     ids = [c.id for c in cases]
@@ -170,7 +177,22 @@ def score(case: Case, trace: dict[str, Any]) -> tuple[bool, str]:
     # "3|three": any of the alternatives counts.
     if passed and any(not any(alt in reply for alt in e.lower().split("|")) for e in case.expect):
         return False, "missing_fact"
+    words = len(reply.split())
+    if passed and case.max_words and words > case.max_words:
+        return False, f"too_long:{words}"
+    if passed and case.max_words and is_formatted(trace.get("reply") or ""):
+        return False, "formatted"
+    if passed and case.min_words and words < case.min_words:
+        return False, f"too_short:{words}"
     return passed, reason
+
+
+# A spoken reply has no bullets, numbered lists, headings or bold.
+_FORMATTING = re.compile(r"^\s*(?:[-*•]|\d+[.)])\s|^\s*#+\s|\*\*", re.MULTILINE)
+
+
+def is_formatted(reply: str) -> bool:
+    return bool(_FORMATTING.search(reply))
 
 
 def _score_decision(case: Case, trace: dict[str, Any]) -> tuple[bool, str]:
@@ -311,6 +333,7 @@ def _summarise(
     first_text = [r["first_text_ms"] for r in results if r["first_text_ms"] is not None]
     totals = [r["total_ms"] for r in results]
     speeds = [r["tokens_per_sec"] for r in results if r["tokens_per_sec"]]
+    chat_words = [len((r.get("reply") or "").split()) for r in by_category.get("chat", [])]
     options = {**chat_options(), **EVAL_OPTIONS}
 
     return {
@@ -345,6 +368,14 @@ def _summarise(
             "total_p90": _percentile(totals, 90),
         },
         "tokens_per_sec_mean": round(statistics.mean(speeds), 1) if speeds else None,
+        # How chat replies read when spoken (2026-10-30: "what is X?" got
+        # bullet lists and three paragraphs).
+        "chat_replies": {
+            "words_p50": _percentile(chat_words, 50),
+            "words_max": max(chat_words, default=0),
+            "formatted": sum(1 for r in by_category.get("chat", []) if is_formatted(r.get("reply") or "")),
+            "total": len(chat_words),
+        },
         "results": results,
     }
 
@@ -379,6 +410,14 @@ def render_markdown(report: dict[str, Any]) -> str:
         f"| First text p50 / p90 | {lat['first_text_p50']} / {lat['first_text_p90']} ms |",
         f"| Whole turn p50 / p90 | {lat['total_p50']} / {lat['total_p90']} ms |",
         f"| Generation speed | {report['tokens_per_sec_mean']} tok/s |",
+    ]
+    chat = report.get("chat_replies")
+    if chat:
+        lines.append(
+            f"| Chat replies: words p50 / max, formatted | {chat['words_p50']} / {chat['words_max']}, "
+            f"{chat['formatted']} of {chat['total']} |"
+        )
+    lines += [
         "",
         "## Failures",
         "",

@@ -32,6 +32,33 @@ not transfer to System 2; **ratios and causes will**.
 
 ## 2. Findings
 
+### F-26 · 2026-10-30 · Short spoken answers: where the instruction sits decides whether tools still get called
+**Problem (user):** "what is X?" got long answers, often bullet lists. They
+asked for JARVIS-style replies: to the point, detailed only when asked.
+
+**Measured:**
+- The eval now scores spoken style. `max_words` on 10 chat cases fails a
+  reply that runs over the limit or uses lists or markdown. `min_words` on
+  the new "explain in detail how a stock exchange works" case fails a reply
+  that is too short. Every report now shows chat-reply length and how many
+  replies were formatted.
+- Re-scored against the last run (`20261030-201346`), only **2 of 10**
+  replies fit: 82–195 words, four of them bullet lists.
+
+| System prompt change | Overall | Chat replies | Forced decisions |
+| :--- | ---: | :--- | ---: |
+| None (`201346`) | 95.1% | 2/10 within limits, median 41 words | 9 |
+| "Answer first, 1–3 sentences", replacing the opening line (`202945`) | **86.3%** | short, unformatted | **35** |
+| RULE 10 at the end: "first call any tool…, then 1–3 sentences" (tool+media+chat, `203357`) | — | 16/22 | 2 |
+| + "usually one or two", no examples, one sample answer (`203736`) | — | 21/22 | 2 |
+| **Same, full run (`204655`)** | **95.2%** | **median 21 words; 1 formatted (the detail case)** | 12 |
+
+**Lesson:** "answer first" at the top of the prompt reads as "don't call a
+tool". Commands like "pause" and "volume" got prose (the F-24 pattern
+again). The same rule placed after the tool rules, opening with "first call
+any tool the request needs", leaves tool calling intact. One example answer
+did more for length than any adjective.
+
 ### F-25 · 2026-10-30 · News, football and market overview; on battery a tool turn now takes 12+ minutes
 **Added:** `get_news` (Google News RSS by section, edition from
 `GIDEON_REGION`; football stories from ESPN), `get_football` (ESPN's public

@@ -576,6 +576,7 @@ State of the interim build as of 2026-10-30 (Windows laptop, GTX 1650 Ti, `qwen3
 - History replays earlier tool calls with short, dated results (outside content is not repeated), so commands after a few chat turns still get tool calls (F-20, F-23).
 - **No false "done":** until a tool has acted, a reply's opening is held back and checked for claims — promises, reported results, invented live facts or absences, false refusals. A claim is replaced by a JSON-schema-constrained decision (one tool or a question) or cut; after a decline it is only cut (F-12 to F-23).
 - One "boss"/"sir" per reply, enforced on the stream (F-21).
+- Spoken replies JARVIS-style: one or two sentences, no lists or markdown, unless the user asks for detail (RULE 10, F-26).
 - Workarounds for small-model failures: text-emitted tool calls are intercepted; "play X" is disambiguated deterministically.
 
 ### 13.3 Broker & security (partial)
@@ -608,12 +609,12 @@ State of the interim build as of 2026-10-30 (Windows laptop, GTX 1650 Ti, `qwen3
 
 ### 13.7 Engineering
 
-- 673 unit tests (model mocked), ruff + mypy clean, pre-commit hooks; tests run against an isolated data directory.
+- 674 unit tests (model mocked), ruff + mypy clean, pre-commit hooks; tests run against an isolated data directory.
 
 ### 13.8 Measurement
 
 - Every turn traced (§6.3) with per-stage latency and correction signals; 👍/👎 in the HUD.
-- Real-model eval: 123 cases in 7 categories (tool choice, slots, chat, clarify, media, projects, history), fake tools, isolated data, reports and model comparisons. Latest (2026-10-30, `evals/reports/20261030-201346-*`): **95.1% (117/123)**, first word 2.0 s median / 5.9 s p90, generation 37.4 tok/s (F-25; the 108-case baseline was 95.4%, F-24).
+- Real-model eval: 124 cases in 7 categories (tool choice, slots, chat, clarify, media, projects, history), fake tools, isolated data, reports and model comparisons; chat cases also score spoken style (word limits, no lists). Latest (2026-10-30, `evals/reports/20261030-204655-*`): **95.2% (118/124)**, first word 2.0 s median / 5.3 s p90, chat replies 21 words median (F-26; the 108-case baseline was 95.4%, F-24).
 - Found and fixed through measurement: the prompt-cache layout never actually reused Ollama's cache (the live context was hoisted into the system block by the chat template). Turns now reuse the cached prefix — prompt processing ~7.5 s → ~0.5 s on CPU.
 - Measured cost of offering all tools: ~2,300 extra prompt tokens on every tool-enabled turn with llama3.2 (its template places tool schemas in the last user message, so they are never cached).
 - Found through measurement: Ollama 0.40.x's llama.cpp runs ~6× slower on this GPU (no tensor cores); pinned to 0.35.1 — prompts 178 tok/s, generation 46 tok/s (F-20).

@@ -267,3 +267,20 @@ def test_expected_facts_accept_alternatives():
     trace = {"detail": {"passes": [{"tool_calls": []}]}, "reply": "It has three uncommitted changes."}
     assert score(case, trace) == (True, "ok")
     assert score(case, {**trace, "reply": "It has some changes."}) == (False, "missing_fact")
+
+
+def test_spoken_replies_are_short_and_unformatted():
+    """2026-10-30: "what is a stock?" got three paragraphs; others bullet lists."""
+    from gideon.evals.runner import Case, is_formatted, score
+
+    case = Case(id="x", prompt="what is a stock?", category="chat", tools=["none"], max_words=12)
+    trace = {"detail": {"passes": [{"tool_calls": []}]}, "reply": "A small share of ownership in a company."}
+    assert score(case, trace) == (True, "ok")
+    assert score(case, {**trace, "reply": "word " * 13}) == (False, "too_long:13")
+    assert score(case, {**trace, "reply": "Two things:\n- shares\n- risk"}) == (False, "formatted")
+    assert is_formatted("**Ownership** of a company") and is_formatted("1. Open it\n2. Copy")
+    assert not is_formatted("It costs 1.5 dollars - roughly.")
+
+    detail = Case(id="y", prompt="explain in detail", category="chat", tools=["none"], min_words=5)
+    assert score(detail, {**trace, "reply": "Too short."}) == (False, "too_short:2")
+    assert score(detail, trace) == (True, "ok")

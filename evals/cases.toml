@@ -11,6 +11,8 @@
 #   forbid = ["tool"]        ...and must not call these meanwhile
 #   history = [ { role = "user", content = "..." }, ... ]   prior turns
 #   expect = ["x|y"]         the reply must mention each (x or y): facts it was given
+#   max_words = 45           spoken style: at most 45 words, no lists or markdown
+#   min_words = 80           the user asked for detail: at least 80 words
 #
 # Categories: tool (pick the right tool), slots (fill it correctly), chat
 # (no tool), clarify (never-assume, PRD §5.5), media (play vs. press play),
@@ -603,6 +605,7 @@ id = "chat-hi"
 prompt = "hi"
 tool = "none"
 category = "chat"
+max_words = 30
 
 [[case]]
 id = "chat-thanks"
@@ -645,30 +648,42 @@ id = "chat-advice"
 prompt = "how should I structure a cover letter?"
 tool = "none"
 category = "chat"
+max_words = 70
 
 [[case]]
 id = "chat-concept-weather"
 prompt = "why is the sky blue?"
 tool = "none"
 category = "chat"
+max_words = 45
 
 [[case]]
 id = "chat-concept-files"
 prompt = "what's the difference between a file and a folder?"
 tool = "none"
 category = "chat"
+max_words = 45
 
 [[case]]
 id = "chat-concept-music"
 prompt = "what makes a song catchy?"
 tool = "none"
 category = "chat"
+max_words = 60
 
 [[case]]
 id = "chat-concept-stocks"
 prompt = "in simple terms, what is a stock?"
 tool = "none"
 category = "chat"
+max_words = 45
+
+[[case]]
+id = "chat-detail-asked"
+prompt = "explain in detail how a stock exchange works"
+tool = "none"
+category = "chat"
+min_words = 80
 
 [[case]]
 id = "chat-summary"
@@ -685,12 +700,14 @@ id = "chat-name"
 prompt = "who are you?"
 tool = "none"
 category = "chat"
+max_words = 40
 
 [[case]]
 id = "chat-feelings"
 prompt = "I'm feeling a bit stressed today"
 tool = "none"
 category = "chat"
+max_words = 50
 
 # ---------------------------------------------------------------------------
 #  Clarify: a required detail is missing — ask, don't guess (PRD §5.5)
@@ -829,12 +846,14 @@ id = "tricky-run-chat"
 prompt = "I want to start running in the mornings, any tips?"
 tool = "none"
 category = "chat"
+max_words = 70
 
 [[case]]
 id = "tricky-copy-chat"
 prompt = "how do I copy files on Windows?"
 tool = "none"
 category = "chat"
+max_words = 60
 
 [[case]]
 id = "tricky-play-chat"
