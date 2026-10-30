@@ -348,14 +348,14 @@ def test_a_held_claim_is_replaced_by_the_real_result():
 
 def test_invented_weather_is_replaced():
     chat = _chat(
-        "The current weather in Varanasi is mostly cloudy with a high of 28°C.",
-        {"tool": "get_weather", "arguments": {"location": "Varanasi"}},
-        "It is clear and 24°C in Varanasi.",
+        "The current weather in Lisbon is mostly cloudy with a high of 28°C.",
+        {"tool": "get_weather", "arguments": {"location": "Lisbon"}},
+        "It is clear and 24°C in Lisbon.",
     )
     reply, trace = _run(
-        Agent(get_db(), None, chat=chat, tool_executor=fake_tool), "what's the weather like in varanasi today?"
+        Agent(get_db(), None, chat=chat, tool_executor=fake_tool), "what's the weather like in lisbon today?"
     )
-    assert reply == "It is clear and 24°C in Varanasi."
+    assert reply == "It is clear and 24°C in Lisbon."
     assert trace["detail"]["passes"][0]["tool_calls"][0]["source"] == "forced"
 
 
@@ -464,7 +464,7 @@ def test_an_uncaught_state_claim_now_forces_a_real_call():
         ("put on some Arctic Monkeys", True),
         ("review the code I just copied", True),
         ("I want to start running in the mornings, any tips?", False),
-        ("what is the weather in delhi?", False),
+        ("what is the weather in oslo?", False),
         ("Vs code please", False),
     ],
 )
@@ -577,8 +577,8 @@ def test_words_that_merely_start_like_actions_are_not_claims(reply):
 
 # ---------------------------------------------------------------------------
 #  2026-10-30, quick-ask: "No its ok" got the question it answered asked again;
-#  "any meetings or tasks?" was answered "none" without looking; "varansi"
-#  sent the weather to Delhi.
+#  "any meetings or tasks?" was answered "none" without looking; a misspelled
+#  city sent the forecast to the current location.
 # ---------------------------------------------------------------------------
 @pytest.mark.parametrize(
     "message,expected",
@@ -623,8 +623,8 @@ def test_absence_claimed_without_looking(reply, expected):
 @pytest.mark.parametrize(
     "value,said,expected",
     [
-        ("Varanasi", "what does the weahter look like in varansi", True),
-        ("Delhi", "weather in dehli", True),
+        ("Barcelona", "what does the weahter look like in barcelone", True),
+        ("Madrid", "weather in madird", True),
         ("London", "weather in linden", False),
         ("Mumbai", "weather in dubai", False),
     ],

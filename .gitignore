@@ -20,9 +20,8 @@ __pycache__/
 *.pyd
 .pytest_cache/
 
-# Local/Environment configs
+# Local/Environment configs (.python-version is versioned: uv reads it)
 .env
-.python-version
 
 # Editor & System Files
 .vscode/
@@ -51,6 +50,5 @@ node/.wrangler/
 .macco/
 macco_analysis.md
 
-# Files
+# Private notes, kept out of the repo (their ideas are merged into PRD.md)
 OSIdea.txt
-GIDEON_ARCHITECTURE.md

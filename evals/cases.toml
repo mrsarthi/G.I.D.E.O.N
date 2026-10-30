@@ -776,10 +776,10 @@ tool = "launch_app"
 args = { app_name = "calc" }
 category = "history"
 history = [
-  { role = "user", content = "What does the weather look like in varanasi today?" },
-  { role = "tool_call", tool = "get_weather", args = { location = "Varanasi" } },
+  { role = "user", content = "What does the weather look like in lisbon today?" },
+  { role = "tool_call", tool = "get_weather", args = { location = "Lisbon" } },
   { role = "tool", tool = "get_weather", content = "Clear sky, 24°C, humidity 61%. Today: high 27°C, low 19°C, 10% chance of rain." },
-  { role = "assistant", content = "It's clear and 24°C in Varanasi today, sir, with only a 10% chance of rain." },
+  { role = "assistant", content = "It's clear and 24°C in Lisbon today, sir, with only a 10% chance of rain." },
   { role = "user", content = "open spotify" },
   { role = "tool_call", tool = "launch_app", args = { app_name = "spotify" } },
   { role = "tool", tool = "launch_app", content = "Launched spotify successfully." },
@@ -788,15 +788,15 @@ history = [
 
 [[case]]
 id = "history-tools-weather-followup"
-prompt = "and in delhi?"
+prompt = "and in oslo?"
 tool = "get_weather"
-args = { location = "delhi" }
+args = { location = "oslo" }
 category = "history"
 history = [
-  { role = "user", content = "What does the weather look like in varanasi today?" },
-  { role = "tool_call", tool = "get_weather", args = { location = "Varanasi" } },
+  { role = "user", content = "What does the weather look like in lisbon today?" },
+  { role = "tool_call", tool = "get_weather", args = { location = "Lisbon" } },
   { role = "tool", tool = "get_weather", content = "Clear sky, 24°C, humidity 61%. Today: high 27°C, low 19°C, 10% chance of rain." },
-  { role = "assistant", content = "It's clear and 24°C in Varanasi today, sir, with only a 10% chance of rain." },
+  { role = "assistant", content = "It's clear and 24°C in Lisbon today, sir, with only a 10% chance of rain." },
 ]
 
 [[case]]

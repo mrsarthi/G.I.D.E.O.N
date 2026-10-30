@@ -2640,7 +2640,7 @@
     {
       "id": "history-tools-weather-followup",
       "category": "history",
-      "prompt": "and in delhi?",
+      "prompt": "and in [city]?",
       "expected": [
         "get_weather"
       ],
@@ -2650,7 +2650,7 @@
         {
           "name": "get_weather",
           "args": {
-            "location": "Delhi"
+            "location": "[city]"
           },
           "source": "forced",
           "blocked": null
@@ -2658,7 +2658,7 @@
       ],
       "nudged": true,
       "tools_offered": false,
-      "reply": "Delhi is currently clear with a temperature of 28\u00b0C, sir, humidity at 55%. Today\u2019s high is 32\u00b0C, low 23\u00b0C, and there's a 5% chance of rain.\n\nI see the weather data for Delhi, but it appears to be the same as Varanasi\u2014likely a data inconsistency. I'll verify this with a fresh check, sir.",
+      "reply": "[city] is currently clear with a temperature of 28\u00b0C, sir, humidity at 55%. Today\u2019s high is 32\u00b0C, low 23\u00b0C, and there's a 5% chance of rain.\n\nI see the weather data for [city], but it appears to be the same as [city]\u2014likely a data inconsistency. I'll verify this with a fresh check, sir.",
       "first_text_ms": 13450,
       "total_ms": 35622,
       "tokens_per_sec": 11.6,

@@ -242,7 +242,7 @@ _CLAIM_PATTERNS = (
         r"(?:the|your|a|an|it|that|this|[A-Z][\w.+-]*)\b"
     ),
     # Live facts only a tool could know. The live context carries the time
-    # but no weather or prices, so "The current weather in Varanasi is mostly
+    # but no weather or prices, so "The current weather in <city> is mostly
     # cloudy with a high of 28°C" with no tool call is invented (seen live,
     # 100% on that phrasing).
     re.compile(

@@ -195,7 +195,7 @@ def _history_message(row: ChatMessage) -> dict[str, Any] | None:
         if not HISTORY_TOOL_CALLS or not row.tool_name or row.tool_name == "none":
             return None
         # Dated: a forecast from three days ago must not read as current
-        # (2026-10-30: an old 28.1°C for Varanasi was quoted as today's).
+        # (2026-10-30: a 3-day-old temperature was quoted as today's).
         result = _replay_result(row.tool_name, row.content)
         when = _local_time(row.timestamp)
         return {"role": "tool", "content": f"[result from {when}] {result}" if when else result, "name": row.tool_name}

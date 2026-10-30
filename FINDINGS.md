@@ -32,7 +32,7 @@ not transfer to System 2; **ratios and causes will**.
 
 ## 2. Findings
 
-### F-23 · 2026-10-30 · "No its ok" → the same question again; "no meetings" without looking; "varansi" → Delhi
+### F-23 · 2026-10-30 · "No its ok" → the same question again; "no meetings" without looking; a misspelled city → the wrong forecast
 A real quick-ask morning, read from its traces:
 
 - **"Do I have any meetings or pending tasks for today?"** No tool was
@@ -47,12 +47,12 @@ A real quick-ask morning, read from its traces:
   never mind / thanks…, short, no action verb) a claim is now cut and never
   forced. Re-run: 3/3 without the repeat; one cut to "Let me know if you'd
   like to add anything."
-- **"what does the weahter look like in varansi"**: never-assume dropped
-  the model's "Varanasi" as invented (a typo isn't a prefix), so the
-  forecast came for the current location, Delhi. The reply then quoted
-  "28.1°C for Varanasi", a 3-day-old tool result replayed in the history.
-  Grounding now accepts close typos (≥5 letters, similarity ≥ 0.8: varansi,
-  dehli; not linden → London), and replayed tool results carry their time
+- **A weather question with the city misspelled**: never-assume dropped
+  the model's correctly spelled city as invented (a typo isn't a prefix), so
+  the forecast came for the current location instead. The reply then
+  quoted a 3-day-old temperature for the city, replayed in the history.
+  Grounding now accepts close typos (≥5 letters, similarity ≥ 0.8: barcelone,
+  madird; not linden → London), and replayed tool results carry their time
   ("[result from 2026-10-27 18:34] …").
 
 ### F-22 · 2026-10-30 · A greeting set off the false-claim check and pulled in the repo's facts
@@ -372,7 +372,7 @@ agent with fake tools (scratch replay, 2–3 runs each):
    gave a native `launch_app` call 2/2 times with no history, and 0/6 times
    after three earlier plain-text answers. Memory recall is *not* the cause:
    same result with memory on or off. One long phrasing ("What does the
-   weather look like in varanasi today, also is there any chance of rain?")
+   weather look like in <city> today, also is there any chance of rain?")
    gets no tool call even without history (4/4). Phase 2's claim → forced
    decision catches all of these now, at ~7 s extra per affected turn.
 3. **Never-assume rejected the model's shortening of the user's word**:
@@ -387,7 +387,7 @@ question replaces it, and it is kept out of the next pass's messages. Honest
 replies lose at most one sentence of streaming, which sentence-level TTS
 waits for anyway.
 
-Replay after the fix: calculator 2/2, notepad 2/2, Varanasi weather 2/2 —
+Replay after the fix: calculator 2/2, notepad 2/2, city weather 2/2 —
 each a single truthful reply ("Calculator has been opened, sir."), the tool
 actually called.
 

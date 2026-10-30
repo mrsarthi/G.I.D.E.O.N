@@ -95,8 +95,9 @@ def _same_word(value_word: str, said_word: str) -> bool:
     shorter, longer = sorted((value_word, said_word), key=len)
     if len(shorter) >= 4 and longer.startswith(shorter):
         return True
-    # A typo: the user typed "varansi", the model wrote "Varanasi" (2026-10-30:
-    # the city was dropped as invented and the weather came back for Delhi).
+    # A typo: the user misspelled a city and the model spelled it right
+    # (2026-10-30: the city was dropped as invented and the forecast came for
+    # the current location instead).
     return len(shorter) >= 5 and SequenceMatcher(None, value_word, said_word).ratio() >= 0.8
 
 

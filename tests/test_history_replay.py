@@ -31,10 +31,10 @@ def _session_with(*rows: tuple) -> str:
 
 
 WEATHER_TURN = (
-    ("user", "what's the weather in varanasi?"),
-    ("tool_call", "[Tool Call: get_weather]", "get_weather", {"location": "Varanasi"}),
+    ("user", "what's the weather in lisbon?"),
+    ("tool_call", "[Tool Call: get_weather]", "get_weather", {"location": "Lisbon"}),
     ("tool", "Clear sky, 24°C, humidity 61%. " + "Hourly detail. " * 40, "get_weather", None),
-    ("assistant", "It's clear and 24°C in Varanasi, sir."),
+    ("assistant", "It's clear and 24°C in Lisbon, sir."),
 )
 
 
@@ -44,7 +44,7 @@ def test_tool_calls_come_back_as_tool_calls():
 
     assert [m["role"] for m in history] == ["user", "assistant", "tool", "assistant", "user"]
     call = history[1]["tool_calls"][0]["function"]
-    assert call == {"name": "get_weather", "arguments": {"location": "Varanasi"}}
+    assert call == {"name": "get_weather", "arguments": {"location": "Lisbon"}}
     result = history[2]["content"]
     # Dated, so an old reading can't pass for a current one (F-23).
     assert result.startswith("[result from 20")
