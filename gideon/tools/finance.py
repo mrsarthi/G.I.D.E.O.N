@@ -23,6 +23,16 @@ OVERVIEW = "MARKET"
 _OVERVIEW_NAMES = {"market", "markets", "overview", "indices"}
 # Words that may surround one of those: "stock markets", "global market overview".
 _OVERVIEW_WORDS = _OVERVIEW_NAMES | {"stock", "stocks", "share", "shares", "all", "global", "world", "summary"}
+# Never-assume: the overview needs the user to have asked about the market.
+# "what's the stock price?" was answered with symbol="market" (2026-10-30);
+# it names no company, so it must be asked.
+_OVERVIEW_EVIDENCE: dict[str, tuple[str, ...]] = {
+    name: ("market", "markets", "indices", "index", "overview", "sensex", "nifty")
+    for name in (
+        *_OVERVIEW_NAMES, "the market", "the markets", "stock market", "stock markets",
+        "market overview", "global markets", "world markets",
+    )
+}
 
 # What people call markets → Yahoo Finance tickers. Small models pass the
 # name ("nifty", "gold") as often as the ticker, and a bare "ETH" or "BTC" is
@@ -169,6 +179,7 @@ def _overview() -> str:
         required=True,
         aliases=("ticker", "stock"),
         normalize=_symbol,
+        evidence=_OVERVIEW_EVIDENCE,
     ),
     Param(
         "data_type",

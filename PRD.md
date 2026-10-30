@@ -608,12 +608,12 @@ State of the interim build as of 2026-10-30 (Windows laptop, GTX 1650 Ti, `qwen3
 
 ### 13.7 Engineering
 
-- 663 unit tests (model mocked), ruff + mypy clean, pre-commit hooks; tests run against an isolated data directory.
+- 673 unit tests (model mocked), ruff + mypy clean, pre-commit hooks; tests run against an isolated data directory.
 
 ### 13.8 Measurement
 
 - Every turn traced (§6.3) with per-stage latency and correction signals; 👍/👎 in the HUD.
-- Real-model eval: 108 cases in 7 categories (tool choice, slots, chat, clarify, media, projects, history), fake tools, isolated data, reports and model comparisons. Baseline on the restored runtime (2026-10-30, `evals/reports/20261030-111552-*`): **95.4% (103/108)**, first word 1.8 s median / 4.2 s p90, generation 37.7 tok/s (F-24).
+- Real-model eval: 123 cases in 7 categories (tool choice, slots, chat, clarify, media, projects, history), fake tools, isolated data, reports and model comparisons. Latest (2026-10-30, `evals/reports/20261030-201346-*`): **95.1% (117/123)**, first word 2.0 s median / 5.9 s p90, generation 37.4 tok/s (F-25; the 108-case baseline was 95.4%, F-24).
 - Found and fixed through measurement: the prompt-cache layout never actually reused Ollama's cache (the live context was hoisted into the system block by the chat template). Turns now reuse the cached prefix — prompt processing ~7.5 s → ~0.5 s on CPU.
 - Measured cost of offering all tools: ~2,300 extra prompt tokens on every tool-enabled turn with llama3.2 (its template places tool schemas in the last user message, so they are never cached).
 - Found through measurement: Ollama 0.40.x's llama.cpp runs ~6× slower on this GPU (no tensor cores); pinned to 0.35.1 — prompts 178 tok/s, generation 46 tok/s (F-20).

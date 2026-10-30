@@ -103,8 +103,27 @@ def test_overview_failures_are_said_plainly():
 
 def test_a_stock_price_with_no_company_still_asks():
     """ask-stock-which: "what's the stock price?" names nothing to look up."""
-    check = check_call(get_tool("get_financial_data"), {}, "what's the stock price?")
+    spec = get_tool("get_financial_data")
+    check = check_call(spec, {}, "what's the stock price?")
     assert [p.name for p in check.missing] == ["symbol"]
+    # Eval 2026-10-30: the model filled the gap with the overview.
+    check = check_call(spec, {"symbol": "market"}, "what's the stock price?")
+    assert [p.name for p in check.ungrounded] == ["symbol"]
+
+
+@pytest.mark.parametrize(
+    ("said", "symbol"),
+    [
+        ("how are the markets doing today?", "market"),
+        ("give me a stock market overview", "stock market"),
+        ("where's the sensex at?", "market"),
+        ("what's apple's stock price?", "AAPL"),
+        ("how is bitcoin doing", "BTC-USD"),
+    ],
+)
+def test_the_overview_needs_a_market_question_but_tickers_do_not(said, symbol):
+    check = check_call(get_tool("get_financial_data"), {"symbol": symbol}, said)
+    assert check.ok and check.arguments == {"symbol": symbol}
 
 
 def test_market_questions_reach_the_tools():

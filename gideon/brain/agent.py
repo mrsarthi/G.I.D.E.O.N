@@ -532,6 +532,8 @@ class Agent:
                     args, dropped = check.arguments, check.dropped
                     if dropped:
                         log.info("Dropped invented optional value(s) %s for %s", dropped, name)
+                    if check.corrected:
+                        log.info("Took the user's value for %s of %s: %s", check.corrected, name, args)
                 if check is not None and not check.ok:
                     blocked = check.problem()
                     blocked_any = True

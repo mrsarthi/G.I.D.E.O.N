@@ -171,6 +171,10 @@ def test_guessed_reminder_time_is_never_saved():
         "The volume is now at 30 percent.",
         "Yes boss, I can check your GPU temperature right now. Let me retrieve that for you.",
         "I don't have access to real-time weather data. Try a weather app.",
+        # Refusing what get_football can do (eval 2026-10-30)
+        "I don't have access to live sports schedules or real-time data.",
+        "I don't have access to real-time sports data or league scores.",
+        "I can't provide the latest El Clásico scores.",
         "Certainly sir. I've triggered the media control to skip to the next track.",
         # A reading with no tool run is invented (the check only runs before a
         # tool has acted; eval 2026-10-30: "your battery is at 87%").

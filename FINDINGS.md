@@ -61,8 +61,40 @@ with length. A graceful restart then waited on that request. The question also
 named no club: "el clasico" now resolves to Barcelona, whose results include
 the match.
 
-**Eval:** 10 news/football cases, 4 market cases and the clásico case added
-(123). The run is pending AC power (F-01).
+**Eval (123 cases, 15 new):** the first run scored **91.1%**, with seven new
+failures:
+- **Three football refusals.** "I don't have access to real-time sports
+  data". I had trimmed `get_football`'s description to save tokens and cut
+  "scores" and "when a club plays next". The false-refusal check knew only
+  "real-time weather/data/prices".
+- **`symbol="market"` for "what's the stock price?"** The new option gave
+  the model an easy guess.
+- **"football news" sent as `topic="sports"`**, which was dropped, so the
+  user got top stories.
+- **F1 sent to `get_football`.**
+- **"Tech news" sent to Hacker News**, whose description said "call for tech
+  news".
+
+Fixes:
+- The football description is restored and says soccer only.
+- The refusal check covers "live/latest … scores/schedules/news".
+- `symbol="market"` needs a market word in the user's message. Evidence on a
+  free-text parameter now constrains only the values it lists.
+- When the model's enum value is unbacked but exactly one other value matches
+  the user's words, that value is used (`SlotCheck.corrected`).
+- Hacker News claims only Hacker News questions.
+
+**Second run, `20261030-201346`: 95.1% (117/123)**, with chat, clarify,
+history, media and projects all at 100%. First word 2.0 s median / 5.9 s
+p90. Left over:
+- F1 still goes to `get_football(team="f1")`; the user did say "F1".
+- "ISL scores this week": the forced decision invented "Mumbai City FC" and
+  never-assume dropped it, so the user got the overview.
+- El Clásico: the forced decision chose `search_web` with no query (F-20's
+  open thread).
+
+**Lesson:** a description trimmed to save ~20 tokens cost three cases. Cut
+schema tokens only with an eval run.
 
 ### F-24 · 2026-10-30 · Baseline on the restored runtime: 95.4%, after finding a regression I caused
 The first full eval on Ollama 0.35.1 scored **79.6%**: only 22 of 76 tool

@@ -109,6 +109,8 @@ class SlotCheck:
     missing: list[Param] = field(default_factory=list)
     ungrounded: list[Param] = field(default_factory=list)
     dropped: list[str] = field(default_factory=list)
+    # Optional values replaced by the one the user's words back.
+    corrected: list[str] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -153,7 +155,24 @@ def check_call(spec: ToolSpec, arguments: dict[str, Any], grounding: str) -> Slo
             continue
         if param.evidence is not None:
             said = _words(grounding)
-            if said & {_stem(w) for w in param.evidence.get(str(value).lower(), ())}:
+            needed = param.evidence.get(str(value).lower())
+            if needed is None and not param.enum:
+                # Free text: only the listed values need the user's words
+                # (symbol="market" does; a ticker does not).
+                continue
+            if said & {_stem(w) for w in needed or ()}:
+                continue
+            # The user's words back a different value: "football news" sent
+            # as topic="sports" (2026-10-30). Take theirs, unless several fit.
+            backed = [
+                v for v in param.enum or ()
+                if v != param.default and said & {_stem(w) for w in param.evidence.get(v, ())}
+            ]
+            if len(backed) == 1:
+                for key in present:
+                    args.pop(key, None)
+                args[param.name] = backed[0]
+                result.corrected.append(param.name)
                 continue
         elif is_grounded(value, grounding, param.ground_ignore):
             continue

@@ -276,6 +276,11 @@ def test_window_choice_needs_the_users_words(said, window, kept):
     assert ("window" in check.dropped) is not kept
 
 
+def test_the_window_the_user_named_wins_over_the_models():
+    check = check_call(get_tool("launch_app"), {"app_name": "vs code", "window": "new"}, "open dumbpipe in this vs code window")
+    assert check.ok and check.arguments["window"] == "this" and check.corrected == ["window"]
+
+
 def test_project_index_is_off_in_tests():
     assert projects.PROJECT_INDEX is False
 

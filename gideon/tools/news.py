@@ -216,7 +216,7 @@ def _fetch_item(item_id: int) -> dict[str, Any] | None:
 
 @tool(
     "get_hackernews",
-    "Fetch top tech news stories, Ask HN, Show HN, or recent posts from HackerNews. Call when user asks for tech news or HackerNews stories.",
+    "Hacker News stories: top, new, best, Ask HN, Show HN, jobs. Call when the user asks about Hacker News.",
     Param(
         "category",
         "HackerNews category.",

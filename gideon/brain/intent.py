@@ -272,9 +272,12 @@ _CLAIM_PATTERNS = (
         r"you\s+have\s+no|you\s+(?:don['’]?t|do\s+not)\s+have\s+any|no)\s+(?:\w+\s+){0,3}?"
         r"(?:meetings?|appointments?|events?|reminders?|tasks?|to-?dos?|notes?|(?:pending|scheduled|upcoming)\s+items?)\b"
         # The opposite failure: refusing what a tool can do. "I don't have
-        # access to real-time weather data" while get_weather is offered.
+        # access to real-time weather data" while get_weather is offered;
+        # "…to live sports schedules", "I can't provide the latest El Clásico
+        # scores" while get_football is (2026-10-30).
         r"|\b(?:don['’]?t|do\s+not|can['’]?t|cannot)\s+(?:have\s+)?(?:access\s+to\s+|provide\s+|check\s+)?"
-        r"(?:the\s+)?(?:real[-\s]?time|live|current)\s+(?:weather|temperature|data|information|prices?)\b",
+        r"(?:the\s+)?(?:real[-\s]?time|live|current|latest)\s+(?:[\w'’-]+\s+){0,2}?"
+        r"(?:weather|temperature|data|information|prices?|scores?|results?|schedules?|fixtures?|news|updates?)\b",
         re.IGNORECASE,
     ),
 )

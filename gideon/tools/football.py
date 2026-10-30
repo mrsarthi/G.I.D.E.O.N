@@ -455,7 +455,8 @@ def _league_name(value: Any) -> str | None:
 
 @tool(
     "get_football",
-    "Football (soccer) results, fixtures and league tables for a club or league. For football news use get_news.",
+    "Football (soccer) only: live scores, results, when a club plays next, and league tables. "
+    "Call for any football match or score question. Not for other sports; for football news use get_news.",
     Param(
         "team",
         "Club the user named, e.g. 'Arsenal'. Omit if none.",

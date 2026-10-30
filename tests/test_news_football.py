@@ -91,6 +91,16 @@ def test_topic_synonyms_normalize():
     assert bind({})["topic"] == "top"
 
 
+def test_the_section_the_user_named_wins_over_the_models():
+    """Eval 2026-10-30: "what's the latest football news?" → topic="sports"."""
+    spec = get_tool("get_news")
+    check = check_call(spec, {"topic": "sports"}, "what's the latest football news?")
+    assert check.ok and check.arguments == {"topic": "football"} and check.corrected == ["topic"]
+    # Two sections fit "tech and business news": nothing to choose between.
+    check = check_call(spec, {"topic": "world"}, "any tech and business news?")
+    assert check.arguments == {} and check.dropped == ["topic"]
+
+
 def test_a_section_the_user_did_not_ask_for_is_dropped():
     spec = get_tool("get_news")
     assert check_call(spec, {"topic": "technology"}, "any tech news?").arguments == {
