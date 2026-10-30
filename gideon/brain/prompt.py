@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from gideon.core.config import (
@@ -194,10 +194,25 @@ def _history_message(row: ChatMessage) -> dict[str, Any] | None:
     if row.role == "tool":
         if not HISTORY_TOOL_CALLS or not row.tool_name or row.tool_name == "none":
             return None
-        return {"role": "tool", "content": _replay_result(row.tool_name, row.content), "name": row.tool_name}
+        # Dated: a forecast from three days ago must not read as current
+        # (2026-10-30: an old 28.1°C for Varanasi was quoted as today's).
+        result = _replay_result(row.tool_name, row.content)
+        when = _local_time(row.timestamp)
+        return {"role": "tool", "content": f"[result from {when}] {result}" if when else result, "name": row.tool_name}
     if not is_context_worthy(row.role, row.content):
         return None
     return {"role": row.role, "content": row.content}
+
+
+def _local_time(utc_stamp: str | None) -> str:
+    """'2026-10-27 13:04:26' (UTC, from SQLite) -> '2026-10-27 18:34' local."""
+    if not utc_stamp:
+        return ""
+    try:
+        moment = datetime.fromisoformat(utc_stamp).replace(tzinfo=UTC)
+    except ValueError:
+        return ""
+    return moment.astimezone().strftime("%Y-%m-%d %H:%M")
 
 
 def _history_tokens(message: dict[str, Any]) -> int:

@@ -30,6 +30,7 @@ from gideon.brain.intent import (
     claims_action,
     correct_media_tool_choice,
     is_command,
+    is_decline,
     should_offer_tools,
     strip_claims,
 )
@@ -311,6 +312,8 @@ class Agent:
         # paused, sir."); after a question that merely mentions an action
         # ("any tips for running?") the answer is just an answer.
         command = offer_tools and is_command(user_prompt)
+        # "No it's ok": a claim in the answer is cut, never acted on (F-23).
+        decline = is_decline(user_prompt)
 
         for turn in range(MAX_TOOL_TURNS):
             full_ans = ""
@@ -411,6 +414,7 @@ class Agent:
             if (
                 not collected_tool_calls
                 and not nudged
+                and not decline
                 and not (ran_tool or requested_approval or blocked_any)
                 and turn < MAX_TOOL_TURNS - 1
                 # Claims come first; in conversation only the opening is

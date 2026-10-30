@@ -250,6 +250,11 @@ _CLAIM_PATTERNS = (
         r"|\bchance\s+of\s+(?:light\s+|heavy\s+)?(?:rain|showers|drizzle|snow|thunderstorms?)\b"
         r"|\b(?:high|low)\s+of\s+-?\d+"
         r"|\bcurrently\s+trading\s+at\b"
+        # Absence claimed without looking: "I don't see any scheduled meetings
+        # or pending tasks" with no tool call (2026-10-30). Only a tool knows.
+        r"|\b(?:i\s+(?:don['’]?t|do\s+not|can['’]?t|cannot)\s+see\s+any|there\s+(?:are|is)\s+no|"
+        r"you\s+have\s+no|you\s+(?:don['’]?t|do\s+not)\s+have\s+any|no)\s+(?:\w+\s+){0,3}?"
+        r"(?:meetings?|appointments?|events?|reminders?|tasks?|to-?dos?|notes?|(?:pending|scheduled|upcoming)\s+items?)\b"
         # The opposite failure: refusing what a tool can do. "I don't have
         # access to real-time weather data" while get_weather is offered.
         r"|\b(?:don['’]?t|do\s+not|can['’]?t|cannot)\s+(?:have\s+)?(?:access\s+to\s+|provide\s+|check\s+)?"
@@ -312,10 +317,31 @@ def claims_action(reply: str, command: bool = False) -> bool:
 NOT_DONE_REPLY = "I haven't done that yet — it didn't go through."
 # What is left after cutting a claim, if it says nothing ("Yes boss.").
 _FILLER_ONLY = re.compile(
-    r"^\W*(?:(?:yes|sure|certainly|okay|ok|alright|right|done|of\s+course|boss|sir|"
-    r"ready\s+for\s+your\s+work)\W*)*$",
+    r"^\W*(?:(?:yes|sure|certainly|okay|ok|alright|right\s+away|right|done|of\s+course|boss|sir|"
+    r"got\s+it|understood|noted|no\s+problem|absolutely|ready\s+for\s+your\s+work)\W*)*$",
     re.IGNORECASE,
 )
+
+# A reply that declines or closes what G.I.D.E.O.N offered: "no it's ok",
+# "never mind", "that's all, thanks". Nothing to act on, so a claim in the
+# answer is cut, never turned into a forced tool call or question — on
+# 2026-10-30 "No its ok" got the question it answered asked again.
+_DECLINE = re.compile(
+    r"^\W*(?:no+|nope|nah|not\s+now|never\s*mind|nothing|that['’]?s\s+(?:all|it|fine|ok(?:ay)?)|"
+    r"it['’]?s\s+(?:ok(?:ay)?|fine|alright|all\s+right)|all\s+good|i['’]?m\s+(?:good|fine|ok(?:ay)?)|"
+    r"ok(?:ay)?|thanks?|thank\s+you|cool|great|got\s+it)\b",
+    re.IGNORECASE,
+)
+
+
+def is_decline(user_prompt: str) -> bool:
+    """A short "no thanks" — not a request, so nothing should be done about it."""
+    text = (user_prompt or "").strip()
+    return (
+        bool(_DECLINE.match(text))
+        and len(text.split()) <= 6
+        and not re.search(_ACTION_WORD, text, re.IGNORECASE)
+    )
 
 
 def strip_claims(reply: str, command: bool = False) -> str:

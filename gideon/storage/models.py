@@ -42,6 +42,7 @@ class ChatMessage:
     # Set on 'tool_call' and 'tool' rows: which tool, and the call's JSON args.
     tool_name: str | None = None
     tool_args: str | None = None
+    timestamp: str | None = None  # UTC, as SQLite's CURRENT_TIMESTAMP writes it
 
 
 @dataclass(slots=True)

@@ -46,8 +46,10 @@ def test_tool_calls_come_back_as_tool_calls():
     call = history[1]["tool_calls"][0]["function"]
     assert call == {"name": "get_weather", "arguments": {"location": "Varanasi"}}
     result = history[2]["content"]
-    assert result.startswith("Clear sky, 24°C")
-    assert len(result) <= prompt.HISTORY_TOOL_RESULT_CHARS + 1  # a short copy, not the whole result
+    # Dated, so an old reading can't pass for a current one (F-23).
+    assert result.startswith("[result from 20")
+    assert "] Clear sky, 24°C" in result
+    assert len(result.split("] ", 1)[1]) <= prompt.HISTORY_TOOL_RESULT_CHARS + 1  # a short copy
 
 
 def test_outside_content_is_not_repeated():
@@ -62,7 +64,8 @@ def test_outside_content_is_not_repeated():
     )
     history = build_context_window(get_db(), session)
     tool_messages = [m for m in history if m["role"] == "tool"]
-    assert [m["content"] for m in tool_messages] == [OUTSIDE_RESULT_PLACEHOLDER]
+    assert len(tool_messages) == 1
+    assert tool_messages[0]["content"].endswith(OUTSIDE_RESULT_PLACEHOLDER)
     assert "pdfeditor_setup" not in json.dumps(history)
 
 

@@ -437,7 +437,7 @@ class DatabaseManager:
         """Fetch the last N messages, returned oldest-first."""
         with self._lock:
             rows = self.conn.execute(
-                """SELECT role, content, tool_name, tool_args FROM messages
+                """SELECT role, content, tool_name, tool_args, timestamp FROM messages
                    WHERE session_id = ?
                    ORDER BY message_id DESC
                    LIMIT ?""",

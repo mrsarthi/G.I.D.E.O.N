@@ -13,7 +13,7 @@ from unittest.mock import patch
 import pytest
 
 from gideon.brain.agent import CLAIMED_ACTION_NUDGE, CLARIFY_REPLY, Agent, OpeningGate
-from gideon.brain.intent import NOT_DONE_REPLY, claims_action, is_command, strip_claims
+from gideon.brain.intent import NOT_DONE_REPLY, claims_action, is_command, is_decline, strip_claims
 from gideon.evals.runner import Case, fake_tool, score
 from gideon.storage.db import get_db
 from gideon.tools.registry import get_tool
@@ -573,3 +573,61 @@ def test_a_long_answer_is_checked_at_its_opening_only():
 def test_words_that_merely_start_like_actions_are_not_claims(reply):
     """2026-10-30: "I'm ready" matched "read" and a greeting got a forced question."""
     assert not claims_action(reply)
+
+
+# ---------------------------------------------------------------------------
+#  2026-10-30, quick-ask: "No its ok" got the question it answered asked again;
+#  "any meetings or tasks?" was answered "none" without looking; "varansi"
+#  sent the weather to Delhi.
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    "message,expected",
+    [
+        ("No its ok", True),
+        ("no thanks", True),
+        ("never mind", True),
+        ("thank you gideon", True),
+        ("Yes please", False),
+        ("ok open notepad", False),
+        ("No, set it for 5pm instead", False),
+    ],
+)
+def test_declines(message, expected):
+    assert is_decline(message) is expected
+
+
+def test_a_claim_after_a_decline_is_cut_not_acted_on():
+    reply_text = (
+        "Right away sir. I've checked your schedule and task list, no meetings or pending items for today. "
+        "Let me know if you'd like to add anything."
+    )
+    chat = _chat(reply_text)
+    reply, trace = _run(Agent(get_db(), None, chat=chat), "No its ok")
+    assert len(chat.calls) == 1, "no forced decision after a decline"
+    assert reply == "Let me know if you'd like to add anything."
+
+
+@pytest.mark.parametrize(
+    "reply,expected",
+    [
+        ("Yes boss. I don’t see any scheduled meetings or pending tasks for today.", True),
+        ("You have no reminders.", True),
+        ("There is no RAM limit on that model.", False),
+        ("No problem at all!", False),
+    ],
+)
+def test_absence_claimed_without_looking(reply, expected):
+    assert claims_action(reply) is expected
+
+
+@pytest.mark.parametrize(
+    "value,said,expected",
+    [
+        ("Varanasi", "what does the weahter look like in varansi", True),
+        ("Delhi", "weather in dehli", True),
+        ("London", "weather in linden", False),
+        ("Mumbai", "weather in dubai", False),
+    ],
+)
+def test_a_typo_is_still_the_users_word(value, said, expected):
+    assert is_grounded(value, said) is expected

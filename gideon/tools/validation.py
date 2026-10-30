@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from difflib import SequenceMatcher
 from typing import Any
 
 from gideon.tools.base import _MISSING_VALUES, Param, ToolSpec
@@ -92,7 +93,11 @@ def _same_word(value_word: str, said_word: str) -> bool:
     if value_word == said_word:
         return True
     shorter, longer = sorted((value_word, said_word), key=len)
-    return len(shorter) >= 4 and longer.startswith(shorter)
+    if len(shorter) >= 4 and longer.startswith(shorter):
+        return True
+    # A typo: the user typed "varansi", the model wrote "Varanasi" (2026-10-30:
+    # the city was dropped as invented and the weather came back for Delhi).
+    return len(shorter) >= 5 and SequenceMatcher(None, value_word, said_word).ratio() >= 0.8
 
 
 @dataclass
