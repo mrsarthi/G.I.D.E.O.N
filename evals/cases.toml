@@ -331,6 +331,34 @@ args = { symbol = "nvda" }
 category = "slots"
 
 [[case]]
+id = "market-overview"
+prompt = "how are the markets doing today?"
+tool = "get_financial_data"
+args = { symbol = "market" }
+category = "slots"
+
+[[case]]
+id = "market-index"
+prompt = "where's the sensex at right now?"
+tool = "get_financial_data"
+args = { symbol = "bsesn" }
+category = "slots"
+
+[[case]]
+id = "market-gold"
+prompt = "what's the gold price today?"
+tool = "get_financial_data"
+args = { symbol = "gc=f" }
+category = "slots"
+
+[[case]]
+id = "market-currency"
+prompt = "what's the dollar to rupee rate?"
+tool = "get_financial_data"
+args = { symbol = "usdinr" }
+category = "slots"
+
+[[case]]
 id = "hn-top"
 prompt = "what's trending on hacker news?"
 tool = "get_hackernews"

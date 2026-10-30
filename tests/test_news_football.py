@@ -49,7 +49,7 @@ def test_top_stories_name_the_edition_source_and_age():
     with patch.object(news, "_fetch_text", return_value=FEED) as fetch:
         out = news.get_news()
     url = fetch.call_args.args[0]
-    assert "/headlines/" not in url and f"gl={news.NEWS_REGION}" in url
+    assert "/headlines/" not in url and f"gl={news.REGION}" in url
     assert out.startswith("TOP STORIES (Google News")
     assert "1. Rover finds water ice (Space Daily, 2 h ago)" in out
     assert "2. Markets close higher (Daily Ledger, 30 h ago)" in out

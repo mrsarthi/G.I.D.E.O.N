@@ -280,10 +280,11 @@ TELEGRAM_SEND_VOICE = _env_flag("GIDEON_TELEGRAM_SEND_VOICE", False)
 
 WOLFRAM_ALPHA_APP_ID = _env("GIDEON_WOLFRAM_APP_ID", "")
 
-# Which Google News edition get_news reads: a two-letter country code (IN, US,
-# GB, AU, CA…). It sets the "national" section and the regional slant of the
-# top stories.
-NEWS_REGION = _env("GIDEON_NEWS_REGION", "US").strip().upper() or "US"
+# Where the user lives, as a two-letter country code (IN, US, GB, AU, CA, JP).
+# Picks the Google News edition get_news reads (its "national" section and
+# the slant of the top stories) and which indices and currency lead the
+# market overview.
+REGION = _env("GIDEON_REGION", "US").strip().upper() or "US"
 
 # ---------------------------------------------------------------------------
 #  Safety switches

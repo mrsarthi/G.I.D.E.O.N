@@ -2,7 +2,7 @@
 G.I.D.E.O.N News Tools
 
 get_news — headlines by section from Google News RSS (the edition set by
-GIDEON_NEWS_REGION), and football stories from ESPN. No keys, no accounts.
+GIDEON_REGION), and football stories from ESPN. No keys, no accounts.
 
 get_hackernews — top, new, best, ask, show, or job stories from the official
 HackerNews Firebase REST API.
@@ -21,7 +21,7 @@ from typing import Any
 
 import httpx
 
-from gideon.core.config import NEWS_REGION
+from gideon.core.config import REGION
 from gideon.core.logs import get_logger
 from gideon.tools.base import Param, tool
 from gideon.tools.football import football_stories
@@ -59,7 +59,7 @@ _REGION_WORDS = {
 _TOPIC_WORDS = {
     "top": ("top", "headline", "headlines", "news", "today", "latest", "happening", "breaking"),
     "world": ("world", "international", "global", "worldwide", "foreign", "abroad"),
-    "national": ("national", "domestic", "country", *_REGION_WORDS.get(NEWS_REGION, ())),
+    "national": ("national", "domestic", "country", *_REGION_WORDS.get(REGION, ())),
     "business": (
         "business", "economy", "economic", "market", "markets", "finance", "financial",
         "companies", "corporate",
@@ -180,7 +180,7 @@ def get_news(topic: str = "top") -> str:
                 lines.append(f"   {summary[:180]}")
         return "\n".join(lines)
 
-    region = NEWS_REGION
+    region = REGION
     edition = f"hl=en-{region}&gl={region}&ceid={region}:en"
     section = _SECTIONS.get(topic)
     url = (

@@ -141,8 +141,8 @@ precede `control_media`.
 | `play_youtube_music` / `search_youtube_music` | YouTube Music |
 | `read_document` | PDF and text/code extraction |
 | `get_weather` | Open-Meteo conditions and forecast |
-| `get_financial_data` | Quotes, news and financials via yfinance |
-| `get_news` | Headlines by section — Google News RSS (edition: `GIDEON_NEWS_REGION`); football stories from ESPN |
+| `get_financial_data` | Quotes, news and financials via yfinance; plain names map to tickers ("sensex", "gold"); `symbol="market"` gives an overview of indices, currencies, commodities and crypto, led by `GIDEON_REGION` |
+| `get_news` | Headlines by section — Google News RSS (edition: `GIDEON_REGION`); football stories from ESPN |
 | `get_football` | Club or league results, fixtures and tables — ESPN's public endpoints, no key |
 | `get_hackernews` | Hacker News stories |
 | `get_ip_info` | IP geolocation |
