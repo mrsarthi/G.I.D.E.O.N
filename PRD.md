@@ -567,9 +567,9 @@ State of the interim build as of 2026-10-30 (Windows laptop, GTX 1650 Ti, `qwen3
 
 ### 13.2 Agent & tools
 
-- 22 tools declared once each with `@tool` (schema, argument aliases, channel policy, confirmation flags, intent triggers):
+- 24 tools declared once each with `@tool` (schema, argument aliases, channel policy, confirmation flags, intent triggers):
   - **System:** status/telemetry, launch apps (built-ins + any Start Menu app; new windows; a project folder in VS Code or Explorer, in a new or the current window), file search, clipboard, volume, media keys, guarded shell.
-  - **Information:** web search, weather, markets, Hacker News, IP lookup, Wolfram Alpha, document reading (PDF/text).
+  - **Information:** web search, news headlines by section (Google News RSS, edition set by `GIDEON_NEWS_REGION`), football scores, fixtures and tables (ESPN, no key), weather, markets, Hacker News, IP lookup, Wolfram Alpha, document reading (PDF/text).
   - **Personal:** reminders (set/list), notes and to-do list (save/list/complete), YouTube Music.
 - **Tool gating** by keyword triggers, plus an embedding **router** that offers only the relevant tools to models whose chat template re-reads the tool list every turn (llama); off for Qwen, whose template caches it (F-13, F-16).
 - Cache-stable prompt layout for Ollama's prefix cache; one tool list per turn so retries reuse the cache (F-20); token budget measured from real schema size; history trimmed so tool output can never push the system prompt out of the window.
@@ -608,7 +608,7 @@ State of the interim build as of 2026-10-30 (Windows laptop, GTX 1650 Ti, `qwen3
 
 ### 13.7 Engineering
 
-- 618 unit tests (model mocked), ruff + mypy clean, pre-commit hooks; tests run against an isolated data directory.
+- 640 unit tests (model mocked), ruff + mypy clean, pre-commit hooks; tests run against an isolated data directory.
 
 ### 13.8 Measurement
 

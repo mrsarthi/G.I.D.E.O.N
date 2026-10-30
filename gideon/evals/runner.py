@@ -98,6 +98,8 @@ _CANNED = {
     "get_weather": "Clear sky, 24°C, humidity 61%. Today: high 27°C, low 19°C, 10% chance of rain.",
     "get_financial_data": "Last price 182.40 USD, +1.2% today.",
     "get_hackernews": "1. Show HN: A tiny database in 500 lines (312 points)\n2. Why SQLite is everywhere (288 points)",
+    "get_news": "TOP STORIES (Google News):\n1. Rover finds water ice near lunar south pole (Space Daily, 2 h ago)\n2. Central bank holds rates steady (Daily Ledger, 5 h ago)",
+    "get_football": "Arsenal — 2nd in Premier League:\nLast results:\n- Sat 24 Oct, Premier League: Arsenal 2-0 Everton\nNext matches:\n- Sun 1 Nov, 22:00, Premier League: Liverpool vs Arsenal",
     "get_ip_info": "Public IP 203.0.113.7 — Pune, Maharashtra, India (ISP: Example Broadband)",
     "query_wolfram_alpha": "Result: 1702519",
     "search_web": "1. Example result: the answer is described on example.com.",

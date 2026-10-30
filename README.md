@@ -10,11 +10,12 @@ needs to (Telegram, the always-on reminder node, cloud TTS).
 
 - **Talks back.** Replies stream into a 3D HUD and are spoken sentence by
   sentence while the model is still generating.
-- **Does things.** 22 tools: system telemetry, reminders, notes and a to-do
+- **Does things.** 24 tools: system telemetry, reminders, notes and a to-do
   list, app launching (Start Menu apps, new windows, "open dumbpipe in a new
   VS Code window"), file search, web search, clipboard,
-  volume and media keys, YouTube Music, documents, weather, markets, Hacker
-  News, IP lookup, Wolfram Alpha and a terminal.
+  volume and media keys, YouTube Music, documents, weather, markets, news
+  headlines, football scores and tables, Hacker News, IP lookup, Wolfram
+  Alpha and a terminal.
 - **Asks before it acts.** Shell commands — and app launches after it has
   read a web page or document — wait for you to click Approve.
 - **Is always reachable.** A tray icon and **Ctrl+Alt+G** quick-ask window,

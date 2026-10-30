@@ -65,10 +65,10 @@ EMBEDDING_MODEL = _env("GIDEON_EMBED_MODEL", "nomic-embed-text")
 # budget below is what we are allowed to fill with conversation, leaving room
 # for the tool schemas Ollama prepends and for the response itself.
 NUM_CTX = _env_int("GIDEON_NUM_CTX", 8192)
-# Sized for the current 22 tools (~2,690 tokens). brain/prompt.py measures the
+# Sized for the current 24 tools (~2,960 tokens). brain/prompt.py measures the
 # real cost at import and warns if this drifts, so adding tools cannot quietly
 # push the assembled prompt past num_ctx.
-TOOL_SCHEMA_RESERVE = _env_int("GIDEON_TOOL_RESERVE", 2800)
+TOOL_SCHEMA_RESERVE = _env_int("GIDEON_TOOL_RESERVE", 3050)
 RESPONSE_RESERVE = _env_int("GIDEON_RESPONSE_RESERVE", 1024)
 MEMORY_RESERVE = _env_int("GIDEON_MEMORY_RESERVE", 700)
 CHARS_PER_TOKEN = 4
@@ -279,6 +279,11 @@ TELEGRAM_ALLOWED_USERS = {
 TELEGRAM_SEND_VOICE = _env_flag("GIDEON_TELEGRAM_SEND_VOICE", False)
 
 WOLFRAM_ALPHA_APP_ID = _env("GIDEON_WOLFRAM_APP_ID", "")
+
+# Which Google News edition get_news reads: a two-letter country code (IN, US,
+# GB, AU, CA…). It sets the "national" section and the regional slant of the
+# top stories.
+NEWS_REGION = _env("GIDEON_NEWS_REGION", "US").strip().upper() or "US"
 
 # ---------------------------------------------------------------------------
 #  Safety switches

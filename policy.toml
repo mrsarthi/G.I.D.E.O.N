@@ -95,6 +95,12 @@ class = "observe"
 [tools.get_financial_data]
 class = "observe"
 
+[tools.get_news]
+class = "observe"
+
+[tools.get_football]
+class = "observe"
+
 [tools.get_hackernews]
 class = "observe"
 

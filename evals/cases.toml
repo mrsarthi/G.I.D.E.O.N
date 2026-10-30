@@ -344,6 +344,74 @@ args = { category = "ask" }
 category = "slots"
 
 [[case]]
+id = "news-top"
+prompt = "what's in the news today?"
+tool = "get_news"
+category = "tool"
+
+[[case]]
+id = "news-world"
+prompt = "any big world news?"
+tool = "get_news"
+args = { topic = "world" }
+category = "slots"
+
+[[case]]
+id = "news-tech"
+prompt = "give me the latest tech news"
+tool = "get_news"
+args = { topic = "technology" }
+category = "slots"
+
+[[case]]
+id = "news-business"
+prompt = "what's happening in business today?"
+tool = "get_news"
+args = { topic = "business" }
+category = "slots"
+
+[[case]]
+id = "news-football"
+prompt = "what's the latest football news?"
+tool = "get_news"
+args = { topic = "football" }
+category = "slots"
+
+[[case]]
+id = "football-team"
+prompt = "how did Arsenal do last night?"
+tool = "get_football"
+args = { team = "arsenal" }
+category = "slots"
+
+[[case]]
+id = "football-next"
+prompt = "when do Real Madrid play next?"
+tool = "get_football"
+args = { team = "madrid" }
+category = "slots"
+
+[[case]]
+id = "football-table"
+prompt = "show me the premier league table"
+tool = "get_football"
+args = { league = "premier league", view = "table" }
+category = "slots"
+
+[[case]]
+id = "football-league"
+prompt = "any ISL scores this week?"
+tool = "get_football"
+args = { league = "indian super league" }
+category = "slots"
+
+[[case]]
+id = "football-chat"
+prompt = "I love watching football with my friends on weekends"
+tool = "none"
+category = "chat"
+
+[[case]]
 id = "ip-mine"
 prompt = "what's my public IP address?"
 tool = "get_ip_info"
@@ -706,7 +774,7 @@ category = "tool"
 [[case]]
 id = "tricky-news-tech"
 prompt = "any interesting tech stories today?"
-tools = ["get_hackernews", "search_web"]
+tools = ["get_hackernews", "get_news", "search_web"]
 category = "tool"
 
 [[case]]
