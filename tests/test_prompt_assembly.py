@@ -38,28 +38,31 @@ def test_static_prompt_contains_nothing_volatile():
         assert volatile not in lowered
 
 
-def test_live_context_sits_after_history_not_before():
+def test_live_context_rides_on_the_newest_user_turn():
+    """Not a system message (templates hoist those into the cached prefix) and
+    not a separate user message (qwen2.5 then stops calling tools)."""
     history = [
         {"role": "user", "content": "first"},
         {"role": "assistant", "content": "second"},
         {"role": "user", "content": "third"},
     ]
     messages = build(history)
-    live_index = next(
-        i for i, m in enumerate(messages) if "[LIVE CONTEXT]" in m["content"]
-    )
-    # Everything before the live block is the cache-stable prefix.
-    assert live_index == len(messages) - 2
-    assert messages[-1]["content"] == "third"
+    live = [i for i, m in enumerate(messages) if "[LIVE CONTEXT]" in m["content"]]
+    assert live == [len(messages) - 1]
+    assert messages[-1]["role"] == "user"
+    assert messages[-1]["content"].startswith("third\n\n[LIVE CONTEXT]")
+    # Only one system message, and it is the static one.
+    assert [m["role"] for m in messages].count("system") == 1
 
 
-def test_newest_user_turn_is_last():
+def test_history_is_replayed_unchanged():
     history = [
         {"role": "user", "content": "older"},
+        {"role": "assistant", "content": "reply"},
         {"role": "user", "content": "newest"},
     ]
     messages = build(history)
-    assert messages[-1] == {"role": "user", "content": "newest"}
+    assert messages[1:3] == history[:2]
 
 
 def test_prefix_grows_monotonically_across_turns():
@@ -72,7 +75,7 @@ def test_prefix_grows_monotonically_across_turns():
             {"role": "user", "content": "c"},
         ]
     )
-    stable_one = [m for m in turn_one if "[LIVE CONTEXT]" not in m["content"]][:-1]
+    stable_one = [m for m in turn_one if "[LIVE CONTEXT]" not in m["content"]]
     for i, msg in enumerate(stable_one):
         assert turn_two[i] == msg
 
@@ -80,7 +83,7 @@ def test_prefix_grows_monotonically_across_turns():
 def test_empty_history_still_includes_user_prompt():
     messages = build([])
     assert messages[-1]["role"] == "user"
-    assert messages[-1]["content"] == "what's my GPU at?"
+    assert messages[-1]["content"].startswith("what's my GPU at?\n\n[LIVE CONTEXT]")
 
 
 def test_tool_bookkeeping_never_replays_as_speech():

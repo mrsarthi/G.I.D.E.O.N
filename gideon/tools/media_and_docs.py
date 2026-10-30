@@ -45,6 +45,8 @@ _KEYEVENTF_KEYUP = 0x0002
 _MEDIA_ALIASES = {
     "play": "play_pause",
     "pause": "play_pause",
+    "resume": "play_pause",
+    "unpause": "play_pause",
     "toggle": "play_pause",
     "next_track": "next",
     "skip": "next",
@@ -53,6 +55,25 @@ _MEDIA_ALIASES = {
     "prev_track": "previous",
     "back": "previous",
 }
+
+def normalize_media_action(action: object) -> str:
+    """Map whatever the model wrote onto a transport key name.
+
+    Models emit synonyms ("pause", "resume") and malformed variants
+    ("pause_pause", "media_next_track"); match on the recognisable parts
+    rather than rejecting outright. Unrecognised input is returned as-is.
+    """
+    key = str(action or "").strip().lower().replace("-", "_").replace(" ", "_")
+    key = _MEDIA_ALIASES.get(key, key)
+    if key in _VK_MEDIA:
+        return key
+    for token in key.split("_"):
+        resolved = _MEDIA_ALIASES.get(token, token)
+        if resolved in _VK_MEDIA:
+            log.info("Normalised media action %r -> %r", action, resolved)
+            return resolved
+    return key
+
 
 _MEDIA_LABELS = {
     "play_pause": "Toggled media playback.",
@@ -148,6 +169,7 @@ def control_volume(action: str, level: int | None = None) -> str:
         enum=("play_pause", "next", "previous", "stop"),
         aliases=("command",),
         default="play_pause",
+        normalize=lambda value: normalize_media_action(value),
     ),
     triggers={"play", "pause", "resume", "skip", "track", "next", "previous"},
 )
@@ -156,20 +178,8 @@ def control_media(action: str) -> str:
     if os.name != "nt":
         return "Media transport control is only implemented on Windows."
 
-    key = (action or "").strip().lower().replace("-", "_").replace(" ", "_")
-    key = _MEDIA_ALIASES.get(key, key)
-
+    key = normalize_media_action(action)
     vk = _VK_MEDIA.get(key)
-    if vk is None:
-        # Models emit malformed variants ("pause_pause", "media_next_track").
-        # Match on the recognisable parts rather than rejecting outright.
-        for token in key.split("_"):
-            resolved = _MEDIA_ALIASES.get(token, token)
-            if resolved in _VK_MEDIA:
-                log.info("Normalised media action %r -> %r", action, resolved)
-                key, vk = resolved, _VK_MEDIA[resolved]
-                break
-
     if vk is None:
         return (
             f"Unknown media action '{action}'. "
@@ -215,7 +225,10 @@ def _resolve_document(raw_path: str) -> Path | None:
         "Path or name of the document, e.g. 'C:\\Users\\me\\Desktop\\report.pdf' or 'main.py'.",
         required=True,
         aliases=("path", "file"),
+        grounded=True,
+        ground_ignore=("document", "doc", "file", "read", "c", "users", "desktop", "documents"),
     ),
+    untrusted_output=True,
     triggers={"read", "document", "pdf"},
 )
 def read_document(file_path: str, max_pages: int = 30) -> str:

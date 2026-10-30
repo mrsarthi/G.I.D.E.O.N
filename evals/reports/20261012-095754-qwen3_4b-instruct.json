@@ -1,0 +1,459 @@
+{
+  "model": "qwen3:4b-instruct",
+  "run_at": "2026-10-12T09:57:54",
+  "placement": "gpu",
+  "on_battery": false,
+  "options": {
+    "temperature": 0,
+    "seed": 42,
+    "num_predict": 256
+  },
+  "router": {
+    "mode": "auto",
+    "enabled": false,
+    "top_k": 5
+  },
+  "seconds": 143,
+  "overall": {
+    "passed": 15,
+    "total": 18,
+    "pct": 83.3
+  },
+  "categories": {
+    "clarify": {
+      "passed": 7,
+      "total": 10,
+      "pct": 70.0
+    },
+    "projects": {
+      "passed": 8,
+      "total": 8,
+      "pct": 100.0
+    }
+  },
+  "tool_selection": {
+    "passed": 6,
+    "total": 6,
+    "pct": 100.0
+  },
+  "gated_misses": 0,
+  "text_tool_calls": 0,
+  "failure_reasons": {
+    "no_question": 2,
+    "guessed": 1
+  },
+  "latency_ms": {
+    "first_text_p50": 4346,
+    "first_text_p90": 12647,
+    "total_p50": 5070,
+    "total_p90": 13201
+  },
+  "tokens_per_sec_mean": 22.8,
+  "results": [
+    {
+      "id": "window-new-vscode",
+      "category": "projects",
+      "prompt": "Can you open a new instance of vs code please",
+      "expected": [
+        "launch_app"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "launch_app",
+          "args": {
+            "app_name": "vs code",
+            "window": "new"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "New instance of VS Code has been opened for you, boss.",
+      "first_text_ms": 22375,
+      "total_ms": 22944,
+      "tokens_per_sec": 22.6,
+      "outcome": "tool"
+    },
+    {
+      "id": "project-in-vscode",
+      "category": "projects",
+      "prompt": "Can you open sendme in vs code please",
+      "expected": [
+        "launch_app"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "launch_app",
+          "args": {
+            "app_name": "vs code",
+            "target": "sendme"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Alright sir, VS Code has been opened and the sendme folder is now loaded.",
+      "first_text_ms": 4346,
+      "total_ms": 5108,
+      "tokens_per_sec": 22.6,
+      "outcome": "tool"
+    },
+    {
+      "id": "project-new-window",
+      "category": "projects",
+      "prompt": "Open dumbpipe in a new vs code window",
+      "expected": [
+        "launch_app"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "launch_app",
+          "args": {
+            "app_name": "vs code",
+            "target": "dumbpipe",
+            "window": "new"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Alright sir, VS Code is now open with the dumbpipe project in a new window.",
+      "first_text_ms": 4706,
+      "total_ms": 5541,
+      "tokens_per_sec": 22.6,
+      "outcome": "tool"
+    },
+    {
+      "id": "project-this-window",
+      "category": "projects",
+      "prompt": "Open dumbpipe in this vs code window",
+      "expected": [
+        "launch_app"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "launch_app",
+          "args": {
+            "app_name": "vs code",
+            "target": "dumbpipe",
+            "window": "this"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Alright sir, VS Code is now open with the dumbpipe project loaded in the current window.",
+      "first_text_ms": 4798,
+      "total_ms": 5679,
+      "tokens_per_sec": 22.3,
+      "outcome": "tool"
+    },
+    {
+      "id": "project-another-window",
+      "category": "projects",
+      "prompt": "open chorrent in another vscode window",
+      "expected": [
+        "launch_app"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "launch_app",
+          "args": {
+            "app_name": "vs code",
+            "target": "chorrent",
+            "window": "new"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Yes boss, Visual Studio Code is now open with the chorrent folder in a new window.",
+      "first_text_ms": 4353,
+      "total_ms": 5212,
+      "tokens_per_sec": 22.4,
+      "outcome": "tool"
+    },
+    {
+      "id": "project-explorer",
+      "category": "projects",
+      "prompt": "show me the sendme folder in file explorer",
+      "expected": [
+        "launch_app"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "launch_app",
+          "args": {
+            "app_name": "file explorer",
+            "target": "sendme"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Yes boss, the sendme folder is now open in File Explorer.",
+      "first_text_ms": 4414,
+      "total_ms": 5070,
+      "tokens_per_sec": 22.3,
+      "outcome": "tool"
+    },
+    {
+      "id": "project-branch",
+      "category": "projects",
+      "prompt": "which branch is dumbpipe on?",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "Yes sir, the dumbpipe project is on the branch named add-version-flag.",
+      "first_text_ms": 2167,
+      "total_ms": 2808,
+      "tokens_per_sec": 26.6,
+      "outcome": "answered"
+    },
+    {
+      "id": "project-dirty",
+      "category": "projects",
+      "prompt": "does sendme have uncommitted changes?",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "Yes boss, sendme has uncommitted changes. There are 3 uncommitted changes in the Rust project, last updated on 2026-10-12. The last commit was on 2026-10-11, titled \"show relay vs direct\".",
+      "first_text_ms": 2024,
+      "total_ms": 4394,
+      "tokens_per_sec": 26.2,
+      "outcome": "answered"
+    },
+    {
+      "id": "ask-reminder-time",
+      "category": "clarify",
+      "prompt": "remind me to call mom",
+      "expected": "ask",
+      "passed": true,
+      "reason": "asked",
+      "calls": [
+        {
+          "name": "set_reminder",
+          "args": {
+            "text": "call mom",
+            "time_str": "in 1 hour"
+          },
+          "source": "forced",
+          "blocked": "ungrounded:time_str"
+        }
+      ],
+      "nudged": true,
+      "tools_offered": true,
+      "reply": "Sir, how long before I should remind you to call mom?",
+      "first_text_ms": 32572,
+      "total_ms": 33200,
+      "tokens_per_sec": 21.9,
+      "outcome": "clarified"
+    },
+    {
+      "id": "ask-reminder-what",
+      "category": "clarify",
+      "prompt": "set a reminder for 6pm",
+      "expected": "ask",
+      "passed": true,
+      "reason": "asked",
+      "calls": [
+        {
+          "name": "set_reminder",
+          "args": {
+            "text": "Meeting with team",
+            "time_str": "6:00 PM"
+          },
+          "source": "forced",
+          "blocked": "ungrounded:text,ungrounded:time_str"
+        }
+      ],
+      "nudged": true,
+      "tools_offered": true,
+      "reply": "What should the reminder be for 6 PM?",
+      "first_text_ms": 12619,
+      "total_ms": 13127,
+      "tokens_per_sec": 22.1,
+      "outcome": "clarified"
+    },
+    {
+      "id": "ask-launch-what",
+      "category": "clarify",
+      "prompt": "open the app",
+      "expected": "ask",
+      "passed": true,
+      "reason": "asked",
+      "calls": [
+        {
+          "name": "launch_app",
+          "args": {
+            "app_name": "notepad"
+          },
+          "source": "forced",
+          "blocked": "ungrounded:app_name"
+        }
+      ],
+      "nudged": true,
+      "tools_offered": true,
+      "reply": "Which app would you like me to open, boss?",
+      "first_text_ms": 12647,
+      "total_ms": 13201,
+      "tokens_per_sec": 22.0,
+      "outcome": "clarified"
+    },
+    {
+      "id": "ask-read-which",
+      "category": "clarify",
+      "prompt": "read the document",
+      "expected": "ask",
+      "passed": false,
+      "reason": "no_question",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Certainly sir. Please provide the file path or name of the document you'd like me to read.",
+      "first_text_ms": 2353,
+      "total_ms": 2531,
+      "tokens_per_sec": 22.4,
+      "outcome": "answered"
+    },
+    {
+      "id": "ask-play-what",
+      "category": "clarify",
+      "prompt": "play that song I like",
+      "expected": "ask",
+      "passed": true,
+      "reason": "asked",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Yes boss, which song do you like?",
+      "first_text_ms": 2052,
+      "total_ms": 2052,
+      "tokens_per_sec": 23.1,
+      "outcome": "answered"
+    },
+    {
+      "id": "ask-stock-which",
+      "category": "clarify",
+      "prompt": "what's the stock price?",
+      "expected": "ask",
+      "passed": true,
+      "reason": "asked",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Certainly sir, could you please specify which stock or ticker you'd like me to check? For example, AAPL for Apple or TSLA for Tesla.",
+      "first_text_ms": 2428,
+      "total_ms": 3103,
+      "tokens_per_sec": 22.1,
+      "outcome": "answered"
+    },
+    {
+      "id": "ask-copy-what",
+      "category": "clarify",
+      "prompt": "copy that to my clipboard",
+      "expected": "ask",
+      "passed": false,
+      "reason": "guessed:set_clipboard",
+      "calls": [
+        {
+          "name": "set_clipboard",
+          "args": {
+            "text": "Yes boss, I'll copy that to your clipboard right away."
+          },
+          "source": "forced",
+          "blocked": null
+        }
+      ],
+      "nudged": true,
+      "tools_offered": true,
+      "reply": "Copied to clipboard, boss.",
+      "first_text_ms": 12115,
+      "total_ms": 12421,
+      "tokens_per_sec": 22.5,
+      "outcome": "tool"
+    },
+    {
+      "id": "ask-search-what",
+      "category": "clarify",
+      "prompt": "find the file",
+      "expected": "ask",
+      "passed": true,
+      "reason": "asked",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Sure, boss. What file are you looking for?",
+      "first_text_ms": 2136,
+      "total_ms": 2136,
+      "tokens_per_sec": 22.4,
+      "outcome": "answered"
+    },
+    {
+      "id": "ask-complete-which",
+      "category": "clarify",
+      "prompt": "mark my task as done",
+      "expected": "ask",
+      "passed": true,
+      "reason": "asked",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Yes boss, which task would you like me to mark as done?",
+      "first_text_ms": 2305,
+      "total_ms": 2305,
+      "tokens_per_sec": 22.3,
+      "outcome": "answered"
+    },
+    {
+      "id": "ask-run-what",
+      "category": "clarify",
+      "prompt": "run the command",
+      "expected": "ask",
+      "passed": false,
+      "reason": "no_question",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Sure, go ahead and specify the command you'd like me to run.",
+      "first_text_ms": 2342,
+      "total_ms": 2342,
+      "tokens_per_sec": 21.6,
+      "outcome": "answered"
+    }
+  ]
+}

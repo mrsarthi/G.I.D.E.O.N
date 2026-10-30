@@ -17,6 +17,9 @@ from __future__ import annotations
 import asyncio
 
 from gideon.brain.agent import Agent
+from gideon.brain.approvals import ApprovalQueue
+from gideon.brain.llm import PowerGuard, warm_up
+from gideon.brain.titles import SessionTitler
 from gideon.core.config import QUICK_SESSION_ID
 from gideon.core.events import EventBus, bus
 from gideon.core.logs import get_logger
@@ -24,6 +27,7 @@ from gideon.interfaces.telegram import GideonTelegramDaemon
 from gideon.reminders.service import ReminderService
 from gideon.storage.db import DatabaseManager, close_db, get_db
 from gideon.storage.memory import VectorMemory
+from gideon.storage.projects import ProjectIndex, set_project_index
 from gideon.storage.remote_scheduler import RemoteScheduler, get_remote_scheduler
 from gideon.voice.tts import SpeechSynthesizer
 
@@ -45,7 +49,13 @@ class Services:
         self.remote = remote or get_remote_scheduler()
         self.events = events
 
-        self.agent = Agent(self.db, self.memory)
+        self.approvals = ApprovalQueue(self.db, publish=self.events.publish_threadsafe)
+        self.agent = Agent(self.db, self.memory, self.approvals)
+        self.titler = SessionTitler(self.db, publish=self.events.publish_threadsafe)
+        self.power = PowerGuard(publish=self.events.publish_threadsafe)
+        # Fact memory about the user's code projects; launch_app reads it.
+        self.projects = ProjectIndex(self.db, self.memory)
+        set_project_index(self.projects)
         self.telegram = GideonTelegramDaemon(agent=self.agent)
         self.reminders = ReminderService(
             self.db,
@@ -77,6 +87,11 @@ class Services:
         self._tasks = [
             asyncio.create_task(self.reminders.run_delivery_loop()),
             asyncio.create_task(self.reminders.run_remote_sync_loop()),
+            # First check runs immediately: booting on battery must not leave
+            # a GPU-resident model in place for even one request.
+            asyncio.create_task(self.power.run()),
+            asyncio.create_task(warm_up()),
+            asyncio.create_task(self.projects.run_refresh_loop()),
         ]
         await self.telegram.start()
         log.info("G.I.D.E.O.N online")
@@ -93,8 +108,10 @@ class Services:
             except asyncio.CancelledError:
                 pass
         self._tasks = []
+        set_project_index(None)
         self.remote.close()
         self.memory.close()
         self.speech.shutdown()
+        self.titler.shutdown()
         close_db()
         log.info("G.I.D.E.O.N offline")

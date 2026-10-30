@@ -83,6 +83,9 @@ def _geocode_location(location_name: str) -> tuple[float, float, str, str] | Non
         "City or location name (e.g. 'Tokyo', 'London', 'New York'). Omit for current location.",
         aliases=("city", "place"),
         default=None,
+        # Optional: an invented city is dropped and the current location used.
+        grounded=True,
+        ground_ignore=("weather", "forecast"),
     ),
     triggers={
         "weather", "forecast", "rain", "raining", "snow", "sunny", "cloudy",

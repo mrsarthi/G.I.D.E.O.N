@@ -8,12 +8,22 @@ less launchers (pythonw) need before anything logs.
 from __future__ import annotations
 
 import logging
+import os
 import sys
 from pathlib import Path
 
 from gideon.core.config import LOG_DIR, LOG_LEVEL
 
 _configured = False
+
+
+def _is_real(stream: object) -> bool:
+    """A stream that goes somewhere. pywebview, on import, replaces a None
+    stdout/stderr with a writer to `nul`; that is still a process with no
+    console, and everything written to it is lost."""
+    if stream is None:
+        return False
+    return str(getattr(stream, "name", "")).lower() not in ("nul", os.devnull.lower())
 
 
 def bind_headless_streams(name: str, max_bytes: int = 5 * 1024 * 1024) -> Path | None:
@@ -35,7 +45,7 @@ def bind_headless_streams(name: str, max_bytes: int = 5 * 1024 * 1024) -> Path |
     Returns None when real streams already exist, so running from a console
     behaves exactly as before.
     """
-    if sys.stdout is not None and sys.stderr is not None:
+    if _is_real(sys.stdout) and _is_real(sys.stderr):
         return None
 
     LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -53,7 +63,46 @@ def bind_headless_streams(name: str, max_bytes: int = 5 * 1024 * 1024) -> Path |
     handle = open(path, "a", encoding="utf-8", buffering=1)  # noqa: SIM115
     sys.stdout = handle
     sys.stderr = handle
+    # A handler created before this call captured the old (dead) stream.
+    for handler in logging.getLogger().handlers:
+        if isinstance(handler, logging.StreamHandler) and not isinstance(
+            handler, logging.FileHandler
+        ) and not _is_real(handler.stream):
+            handler.setStream(handle)
     return path
+
+
+class QuietHealthChecks(logging.Filter):
+    """Drops access-log lines for /api/health.
+
+    The tray polls it every 20 seconds: on 2026-10-27, 19,656 of the engine
+    log's 84,622 lines were that poll and nothing else.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return "/api/health" not in record.getMessage()
+
+
+class NetworkDropsAsOneLine(logging.Filter):
+    """Turns a failed Telegram poll into one warning line, not a traceback.
+
+    python-telegram-bot logs every failed poll at ERROR with a ~120-line
+    chained traceback. The laptop sleeps lid-closed every night and wakes
+    before Wi-Fi is back, so "getaddrinfo failed" is routine: 463 of them in
+    12 days were most of the log. The library retries by itself; one line is
+    all there is to say. Matched by class name so core needn't import telegram.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        exc = record.exc_info[1] if record.exc_info else None
+        if exc is not None and any(
+            cls.__name__ == "NetworkError" and cls.__module__.startswith("telegram")
+            for cls in type(exc).__mro__
+        ):
+            record.msg, record.args = "Telegram polling failed (%s); retrying", (exc,)
+            record.exc_info, record.exc_text = None, None
+            record.levelno, record.levelname = logging.WARNING, "WARNING"
+        return True
 
 
 def setup_logging() -> None:
@@ -68,6 +117,9 @@ def setup_logging() -> None:
     )
     logging.getLogger("chromadb").setLevel(logging.WARNING)
     logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("uvicorn.access").addFilter(QuietHealthChecks())
+    for name in ("telegram.ext.Updater", "telegram.ext.Application"):
+        logging.getLogger(name).addFilter(NetworkDropsAsOneLine())
     _configured = True
 
 

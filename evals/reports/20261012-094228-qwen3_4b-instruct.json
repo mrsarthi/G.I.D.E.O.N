@@ -1,0 +1,369 @@
+{
+  "model": "qwen3:4b-instruct",
+  "run_at": "2026-10-12T09:42:28",
+  "placement": "gpu",
+  "on_battery": false,
+  "options": {
+    "temperature": 0,
+    "seed": 42,
+    "num_predict": 256
+  },
+  "router": {
+    "mode": "auto",
+    "enabled": false,
+    "top_k": 5
+  },
+  "seconds": 70,
+  "overall": {
+    "passed": 10,
+    "total": 12,
+    "pct": 83.3
+  },
+  "categories": {
+    "projects": {
+      "passed": 6,
+      "total": 8,
+      "pct": 75.0
+    },
+    "slots": {
+      "passed": 4,
+      "total": 4,
+      "pct": 100.0
+    }
+  },
+  "tool_selection": {
+    "passed": 10,
+    "total": 10,
+    "pct": 100.0
+  },
+  "gated_misses": 0,
+  "text_tool_calls": 0,
+  "failure_reasons": {
+    "blocked": 1,
+    "missing_fact": 1
+  },
+  "latency_ms": {
+    "first_text_p50": 4455,
+    "first_text_p90": 4787,
+    "total_p50": 5103,
+    "total_p90": 5651
+  },
+  "tokens_per_sec_mean": 23.1,
+  "results": [
+    {
+      "id": "launch-notepad",
+      "category": "slots",
+      "prompt": "open notepad",
+      "expected": [
+        "launch_app"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "launch_app",
+          "args": {
+            "app_name": "notepad"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Notepad has been opened, sir.",
+      "first_text_ms": 22153,
+      "total_ms": 22497,
+      "tokens_per_sec": 23.0,
+      "outcome": "tool"
+    },
+    {
+      "id": "launch-vscode",
+      "category": "slots",
+      "prompt": "launch vs code for me",
+      "expected": [
+        "launch_app"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "launch_app",
+          "args": {
+            "app_name": "vs code"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Alright sir, Visual Studio Code is now open.",
+      "first_text_ms": 2934,
+      "total_ms": 3314,
+      "tokens_per_sec": 22.7,
+      "outcome": "tool"
+    },
+    {
+      "id": "launch-calc",
+      "category": "slots",
+      "prompt": "Can you start the calculator?",
+      "expected": [
+        "launch_app"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "launch_app",
+          "args": {
+            "app_name": "calculator"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Calculator has been started, boss.",
+      "first_text_ms": 2883,
+      "total_ms": 3184,
+      "tokens_per_sec": 23.0,
+      "outcome": "tool"
+    },
+    {
+      "id": "launch-excel",
+      "category": "slots",
+      "prompt": "open excel",
+      "expected": [
+        "launch_app"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "launch_app",
+          "args": {
+            "app_name": "excel"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Excel has been opened, sir.",
+      "first_text_ms": 2908,
+      "total_ms": 3196,
+      "tokens_per_sec": 22.9,
+      "outcome": "tool"
+    },
+    {
+      "id": "window-new-vscode",
+      "category": "projects",
+      "prompt": "Can you open a new instance of vs code please",
+      "expected": [
+        "launch_app"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "launch_app",
+          "args": {
+            "app_name": "vs code",
+            "window": "new"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "New instance of VS Code has been opened for you, boss.",
+      "first_text_ms": 3214,
+      "total_ms": 3782,
+      "tokens_per_sec": 22.7,
+      "outcome": "tool"
+    },
+    {
+      "id": "project-in-vscode",
+      "category": "projects",
+      "prompt": "Can you open sendme in vs code please",
+      "expected": [
+        "launch_app"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "launch_app",
+          "args": {
+            "app_name": "vs code",
+            "target": "sendme"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Alright boss, VS Code has been opened and the sendme folder is now loaded.",
+      "first_text_ms": 4487,
+      "total_ms": 5255,
+      "tokens_per_sec": 21.2,
+      "outcome": "tool"
+    },
+    {
+      "id": "project-new-window",
+      "category": "projects",
+      "prompt": "Open dumbpipe in a new vs code window",
+      "expected": [
+        "launch_app"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "launch_app",
+          "args": {
+            "app_name": "vs code",
+            "target": "dumbpipe",
+            "window": "new"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Alright sir, VS Code is now open with the dumbpipe project in a new window.",
+      "first_text_ms": 4741,
+      "total_ms": 5584,
+      "tokens_per_sec": 22.6,
+      "outcome": "tool"
+    },
+    {
+      "id": "project-this-window",
+      "category": "projects",
+      "prompt": "Open dumbpipe in this vs code window",
+      "expected": [
+        "launch_app"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "launch_app",
+          "args": {
+            "app_name": "vs code",
+            "target": "dumbpipe",
+            "window": "this"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Alright sir, VS Code is now open with the dumbpipe project loaded in the current window.",
+      "first_text_ms": 4765,
+      "total_ms": 5651,
+      "tokens_per_sec": 22.2,
+      "outcome": "tool"
+    },
+    {
+      "id": "project-another-window",
+      "category": "projects",
+      "prompt": "open chorrent in another vscode window",
+      "expected": [
+        "launch_app"
+      ],
+      "passed": false,
+      "reason": "blocked:ungrounded:app_name",
+      "calls": [
+        {
+          "name": "launch_app",
+          "args": {
+            "app_name": "vs code",
+            "target": "chorrent",
+            "window": "new"
+          },
+          "source": "native",
+          "blocked": "ungrounded:app_name"
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Which app would you like me to open, sir?",
+      "first_text_ms": 4787,
+      "total_ms": 5348,
+      "tokens_per_sec": 22.3,
+      "outcome": "clarified"
+    },
+    {
+      "id": "project-explorer",
+      "category": "projects",
+      "prompt": "show me the sendme folder in file explorer",
+      "expected": [
+        "launch_app"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "launch_app",
+          "args": {
+            "app_name": "file explorer",
+            "target": "sendme"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Yes boss, the sendme folder is now open in File Explorer.",
+      "first_text_ms": 4455,
+      "total_ms": 5103,
+      "tokens_per_sec": 21.9,
+      "outcome": "tool"
+    },
+    {
+      "id": "project-branch",
+      "category": "projects",
+      "prompt": "which branch is dumbpipe on?",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "Sir, dumbpipe is on the branch named add-version-flag.",
+      "first_text_ms": 2204,
+      "total_ms": 2730,
+      "tokens_per_sec": 26.6,
+      "outcome": "answered"
+    },
+    {
+      "id": "project-dirty",
+      "category": "projects",
+      "prompt": "does sendme have uncommitted changes?",
+      "expected": [
+        "none"
+      ],
+      "passed": false,
+      "reason": "missing_fact",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "Yes boss, sendme has uncommitted changes. The Git branch show-connection-type has three uncommitted changes, last updated on 2026-10-12. The last commit was on 2026-10-11, titled \"show relay vs direct\".",
+      "first_text_ms": 2023,
+      "total_ms": 4388,
+      "tokens_per_sec": 26.6,
+      "outcome": "answered"
+    }
+  ]
+}

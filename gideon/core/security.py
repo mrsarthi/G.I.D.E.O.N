@@ -78,6 +78,14 @@ DESTRUCTIVE_COMMAND_PATTERNS = [
     r":\(\)\s*\{.*\};\s*:",                    # fork bomb
     r"\b(curl|wget|iwr|invoke-webrequest)\b.*\|\s*(sh|bash|iex|powershell)",
     r"\biex\b.*\bdownloadstring\b",            # download-and-execute
+    # Hiding the real command from this list and from the approval card.
+    r"\b(powershell|pwsh)\b.*\s-(e|ec|enc|encodedcommand)\s+[a-z0-9+/=]{16,}",  # -enc <base64>
+    r"\b(iex|invoke-expression)\b",            # evaluate a string as code
+    r"\bcertutil\b.*\s[/-](urlcache|decode)",  # download / decode payloads
+    r"\bbitsadmin\b.*[/-]transfer",
+    r"\bmshta\b",
+    r"\bregsvr32\b.*[/-]i:\s*https?:",         # squiblydoo
+    r"\brundll32\b.*javascript:",
 ]
 
 # Shell operators that chain a second command onto the first.

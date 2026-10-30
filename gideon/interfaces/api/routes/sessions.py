@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from gideon.app import Services
+from gideon.brain.titles import PLACEHOLDER_TITLE
 from gideon.core.logs import get_logger
 from gideon.interfaces.api.deps import get_services
 
@@ -37,8 +36,12 @@ def list_sessions(services: Services = Depends(get_services)):
 @router.post("/api/sessions")
 def create_session(data: SessionCreate, services: Services = Depends(get_services)):
     try:
-        name = (data.name or "").strip() or f"Session {datetime.now():%Y-%m-%d %H:%M}"
-        session_id = services.db.create_session(name)
+        # No name means "name it for me": a placeholder until the first
+        # exchange, then a generated title (brain/titles.py).
+        name = (data.name or "").strip()
+        auto_title = not name
+        session_id = services.db.create_session(name or PLACEHOLDER_TITLE, auto_title=auto_title)
+        name = name or PLACEHOLDER_TITLE
         return {"session_id": session_id, "session_name": name}
     except Exception as exc:
         log.exception("Creating session failed")

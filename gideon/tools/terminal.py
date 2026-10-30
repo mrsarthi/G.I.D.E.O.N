@@ -9,7 +9,9 @@ that has demonstrably hallucinated tool names and misrouted arguments:
 
 1. A denylist of irreversible commands, applied to every segment of a chained
    command line so `dir && format c:` cannot slip a second command through.
-2. An optional confirmation gate (GIDEON_REQUIRE_CONFIRMATION=1).
+2. Approval: the agent will not run this tool until the user approves it in
+   the interface (brain/approvals.py). The HUD's terminal drawer calls this
+   function directly — there the user typed the command, which is approval.
 3. A durable audit row for every attempt, allowed or refused.
 
 None of this is a sandbox. It blocks the catastrophic tail; it does not make
@@ -25,7 +27,6 @@ from pathlib import Path
 from gideon.core.config import (
     BASE_DIR,
     ENFORCE_COMMAND_DENYLIST,
-    REQUIRE_CONFIRMATION,
     TERMINAL_TIMEOUT_SECONDS,
 )
 from gideon.core.events import bus
@@ -123,6 +124,9 @@ def _publish(command, code, output, cwd) -> None:
     # Telegram is a remote channel guarded only by a user-ID allowlist.
     blocked_channels={"telegram"},
     confirm=True,
+    privileged=True,
+    # Command output can contain anything a file or website put there.
+    untrusted_output=True,
     triggers={
         "terminal", "command", "cmd", "powershell", "shell", "exec", "execute",
         "pip", "npm", "git", "pytest", "cli",
@@ -155,14 +159,6 @@ def run_terminal_command(
             f"denylist ({reason}). If you genuinely intend it, run it yourself in a "
             f"terminal."
         )
-
-    # 2. Confirmation gate.
-    # Also enforced by the agent for every confirm=True tool; repeated here
-    # because the HUD's terminal drawer calls this function directly.
-    if REQUIRE_CONFIRMATION:
-        log.info("Terminal command %r blocked pending confirmation", cmd_str)
-        _audit(cmd_str, work_dir, channel, allowed=False, reason="awaiting confirmation")
-        return f"User confirmation required before executing terminal command: '{cmd_str}'."
 
     log.info("Executing (%s) %r in %s", channel, cmd_str, work_dir)
 

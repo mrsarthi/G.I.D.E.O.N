@@ -14,6 +14,7 @@ from __future__ import annotations
 import importlib
 from typing import Any
 
+from gideon.core.config import POLICY_FILE
 from gideon.core.logs import get_logger
 from gideon.tools.base import _REGISTRY, ToolSpec
 
@@ -22,11 +23,13 @@ log = get_logger("gideon.tools.registry")
 _TOOL_MODULES = (
     "desktop",
     "reminders",
+    "notes",
     "web_and_clipboard",
     "media_and_docs",
     "yt_music",
     "weather",
     "finance",
+    "football",
     "news",
     "geolocation",
     "knowledge",
@@ -37,6 +40,12 @@ _TOOL_MODULES = (
 for _module in _TOOL_MODULES:
     importlib.import_module(f"gideon.tools.{_module}")
 
+# policy.toml is the source of truth for what each tool may do; the values in
+# the @tool declarations are fallbacks (tools/policy.py).
+from gideon.tools.policy import apply_policy, load_policy  # noqa: E402
+
+apply_policy(_REGISTRY, load_policy(POLICY_FILE))
+
 # The order schemas are offered in. Small models are order-biased — the
 # specific play_youtube_music must precede the generic control_media or "play
 # <song>" presses the play button — and a stable order keeps Ollama's prefix
@@ -45,6 +54,9 @@ _SCHEMA_ORDER = (
     "get_system_status",
     "set_reminder",
     "list_reminders",
+    "save_note",
+    "list_notes",
+    "complete_task",
     "launch_app",
     "search_files",
     "search_web",
@@ -57,6 +69,8 @@ _SCHEMA_ORDER = (
     "search_youtube_music",
     "get_weather",
     "get_financial_data",
+    "get_news",
+    "get_football",
     "get_hackernews",
     "get_ip_info",
     "query_wolfram_alpha",

@@ -54,17 +54,21 @@ def _env_flag(key: str, default: bool) -> bool:
 # ---------------------------------------------------------------------------
 #  Models
 # ---------------------------------------------------------------------------
-CHAT_MODEL = _env("GIDEON_CHAT_MODEL", "llama3.2:latest")
+# qwen3:4b-instruct since 2026-10-10: most accurate on the eval (80% vs
+# llama3.2's 78%), never calls tools during plain chat, asks instead of
+# guessing most often, ~3x faster to the first word (FINDINGS F-16). It must
+# be the *instruct* tag — plain `qwen3:4b` is thinking-only (F-10).
+CHAT_MODEL = _env("GIDEON_CHAT_MODEL", "qwen3:4b-instruct")
 EMBEDDING_MODEL = _env("GIDEON_EMBED_MODEL", "nomic-embed-text")
 
 # Context budget. num_ctx is what Ollama allocates KV cache for; the prompt
 # budget below is what we are allowed to fill with conversation, leaving room
 # for the tool schemas Ollama prepends and for the response itself.
 NUM_CTX = _env_int("GIDEON_NUM_CTX", 8192)
-# Sized for the current 19 tools (~2,240 tokens). brain/prompt.py measures the
+# Sized for the current 24 tools (~2,960 tokens). brain/prompt.py measures the
 # real cost at import and warns if this drifts, so adding tools cannot quietly
 # push the assembled prompt past num_ctx.
-TOOL_SCHEMA_RESERVE = _env_int("GIDEON_TOOL_RESERVE", 2300)
+TOOL_SCHEMA_RESERVE = _env_int("GIDEON_TOOL_RESERVE", 3050)
 RESPONSE_RESERVE = _env_int("GIDEON_RESPONSE_RESERVE", 1024)
 MEMORY_RESERVE = _env_int("GIDEON_MEMORY_RESERVE", 700)
 CHARS_PER_TOKEN = 4
@@ -84,6 +88,22 @@ OLLAMA_OPTIONS = {
 
 EMBED_OPTIONS = {"num_gpu": 0} if EMBED_ON_CPU else {}
 
+# Where the chat model runs on battery (see brain/llm.py). This laptop powers
+# off if the GPU runs the model on battery, so the default keeps it on the CPU:
+#   cpu  CPU only (measured ~17.7 tok/s, 0 MiB VRAM)   off  model paused
+#   gpu  unchanged — only for machines whose battery can supply the GPU
+BATTERY_MODE = _env("GIDEON_ON_BATTERY", "cpu").strip().lower()
+if BATTERY_MODE not in ("cpu", "off", "gpu"):
+    BATTERY_MODE = "cpu"
+# Physical cores: hyperthreads add heat and drain without adding speed here.
+BATTERY_THREADS = _env_int("GIDEON_BATTERY_THREADS", max(1, (os.cpu_count() or 2) // 2))
+# How often the engine checks for being unplugged.
+POWER_POLL_SECONDS = _env_int("GIDEON_POWER_POLL", 5)
+# Load the chat model (and prefill the system prompt) when the engine starts,
+# so the first question after boot does not wait for a cold load. Skipped on
+# battery: there is no point spending the battery on a model nobody asked for.
+WARM_UP_MODEL = _env_flag("GIDEON_WARM_UP", True)
+
 # ---------------------------------------------------------------------------
 #  Memory / retrieval
 # ---------------------------------------------------------------------------
@@ -96,6 +116,15 @@ MEMORY_MIN_CHARS = _env_int("GIDEON_MEMORY_MIN_CHARS", 25)
 MEMORY_SNIPPET_CHARS = _env_int("GIDEON_MEMORY_SNIPPET_CHARS", 600)
 
 HISTORY_MESSAGE_LIMIT = _env_int("GIDEON_HISTORY_LIMIT", 30)
+# Replay earlier tool calls in the history as tool calls (with a short copy
+# of each result), not just the sentence that followed. Without them, past
+# turns look like plain chat and the model answers the next command in
+# prose instead of calling a tool (F-17 fault 2, F-20).
+HISTORY_TOOL_CALLS = _env_flag("GIDEON_HISTORY_TOOL_CALLS", True)
+HISTORY_TOOL_RESULT_CHARS = _env_int("GIDEON_HISTORY_TOOL_RESULT_CHARS", 240)
+# Longest tool output fed back to the model (~1,500 tokens). A 20,000-char
+# document dropped into an 8k context pushes the system prompt off the front.
+TOOL_RESULT_MAX_CHARS = _env_int("GIDEON_TOOL_RESULT_MAX_CHARS", 6000)
 MAX_TOOL_TURNS = _env_int("GIDEON_MAX_TOOL_TURNS", 4)
 
 # ---------------------------------------------------------------------------
@@ -127,6 +156,17 @@ DB_PATH = _state_path(_env("GIDEON_DB", "gideon.db"))
 CHROMA_PATH = _state_path("chroma", legacy_name=".chromadb")
 LOG_DIR = _state_path("logs")
 WEBVIEW_DIR = _state_path("webview", legacy_name=".webview")
+
+# Folders the file-search tool may walk, separated by ';'. Empty means
+# Desktop, Documents and Downloads (and their OneDrive-backed versions).
+SEARCH_ROOTS = [p for p in _env("GIDEON_SEARCH_ROOTS", "").split(os.pathsep) if p.strip()]
+
+# Project knowledge (storage/projects.py): your code folders, found under the
+# search roots and in VS Code's history, with their git state, kept in fact
+# memory. Refreshed at start and then every PROJECT_REFRESH_MINUTES.
+PROJECT_INDEX = _env_flag("GIDEON_PROJECT_INDEX", True)
+PROJECT_REFRESH_MINUTES = _env_int("GIDEON_PROJECT_REFRESH_MINUTES", 30)
+PROJECT_SCAN_DEPTH = _env_int("GIDEON_PROJECT_SCAN_DEPTH", 4)
 
 FRONTEND_DIR = BASE_DIR / "frontend"
 STATIC_DIR = BASE_DIR / "static"
@@ -240,12 +280,23 @@ TELEGRAM_SEND_VOICE = _env_flag("GIDEON_TELEGRAM_SEND_VOICE", False)
 
 WOLFRAM_ALPHA_APP_ID = _env("GIDEON_WOLFRAM_APP_ID", "")
 
+# Where the user lives, as a two-letter country code (IN, US, GB, AU, CA, JP).
+# Picks the Google News edition get_news reads (its "national" section and
+# the slant of the top stories) and which indices and currency lead the
+# market overview.
+REGION = _env("GIDEON_REGION", "US").strip().upper() or "US"
+
 # ---------------------------------------------------------------------------
 #  Safety switches
 # ---------------------------------------------------------------------------
-# Tools declared with confirm=True (see tools/base.py) are refused until the
-# user confirms, when this is on.
-REQUIRE_CONFIRMATION = _env_flag("GIDEON_REQUIRE_CONFIRMATION", False)
+# Tools declared with confirm=True (the shell) wait for the user to approve
+# them in the HUD or quick window before they run. On by default: a web page
+# the model just read must not be able to reach a shell unattended. Tools
+# declared privileged=True (shell, app launching) need approval regardless of
+# this setting once outside content has entered the turn.
+REQUIRE_CONFIRMATION = _env_flag("GIDEON_REQUIRE_CONFIRMATION", True)
+# Unanswered approval requests lapse after this long.
+APPROVAL_TTL_MINUTES = _env_int("GIDEON_APPROVAL_TTL_MINUTES", 15)
 
 # Small models call tools they were never asked to call. Observed: "say thanks
 # in one short sentence" triggered set_clipboard, silently overwriting the
@@ -253,6 +304,21 @@ REQUIRE_CONFIRMATION = _env_flag("GIDEON_REQUIRE_CONFIRMATION", False)
 # is on, the tool schemas are only offered for messages with operational
 # intent — which also removes ~1200 tokens of prefill from ordinary chat.
 TOOL_GATING = _env_flag("GIDEON_TOOL_GATING", True)
+
+# Offer only the most relevant tools per message (brain/router.py):
+#   auto  on for models whose template re-reads the tool list every turn
+#         (llama3.2: 3x faster, same accuracy), off for models that cache it
+#         (Qwen: routing breaks the cache and costs accuracy) — FINDINGS F-16
+#   on / off  force it. "1"/"0" are accepted as on/off.
+_ROUTER = _env("GIDEON_TOOL_ROUTER", "auto").strip().lower()
+TOOL_ROUTER = {"1": "on", "true": "on", "0": "off", "false": "off"}.get(_ROUTER, _ROUTER)
+if TOOL_ROUTER not in ("auto", "on", "off"):
+    TOOL_ROUTER = "auto"
+
+# Which tools may do what (PRD §5.6, §9.2): capability class, confirmation
+# and channel rules, editable without touching code.
+POLICY_FILE = Path(_env("GIDEON_POLICY_FILE", str(BASE_DIR / "policy.toml")))
+ROUTER_TOP_K = _env_int("GIDEON_ROUTER_TOP_K", 5)
 
 ENFORCE_COMMAND_DENYLIST = _env_flag("GIDEON_COMMAND_DENYLIST", True)
 TERMINAL_TIMEOUT_SECONDS = _env_int("GIDEON_TERMINAL_TIMEOUT", 30)

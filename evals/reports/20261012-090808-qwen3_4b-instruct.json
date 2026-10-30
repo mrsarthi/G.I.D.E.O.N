@@ -1,0 +1,807 @@
+{
+  "model": "qwen3:4b-instruct",
+  "run_at": "2026-10-12T09:08:06",
+  "placement": "gpu",
+  "on_battery": false,
+  "options": {
+    "temperature": 0,
+    "seed": 42,
+    "num_predict": 256
+  },
+  "router": {
+    "mode": "auto",
+    "enabled": false,
+    "top_k": 5
+  },
+  "seconds": 287,
+  "overall": {
+    "passed": 34,
+    "total": 37,
+    "pct": 91.9
+  },
+  "categories": {
+    "chat": {
+      "passed": 20,
+      "total": 20,
+      "pct": 100.0
+    },
+    "clarify": {
+      "passed": 7,
+      "total": 10,
+      "pct": 70.0
+    },
+    "media": {
+      "passed": 7,
+      "total": 7,
+      "pct": 100.0
+    }
+  },
+  "tool_selection": {
+    "passed": 8,
+    "total": 8,
+    "pct": 100.0
+  },
+  "gated_misses": 0,
+  "text_tool_calls": 0,
+  "failure_reasons": {
+    "no_question": 3
+  },
+  "latency_ms": {
+    "first_text_p50": 2413,
+    "first_text_p90": 13011,
+    "total_p50": 5039,
+    "total_p90": 13842
+  },
+  "tokens_per_sec_mean": 23.8,
+  "results": [
+    {
+      "id": "media-play-song",
+      "category": "media",
+      "prompt": "play Loser by Tame Impala",
+      "expected": [
+        "play_youtube_music"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "play_youtube_music",
+          "args": {
+            "query": "Loser by Tame Impala"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Yes boss, \"Loser\" by Tame Impala is now playing on YouTube Music.",
+      "first_text_ms": 21316,
+      "total_ms": 22174,
+      "tokens_per_sec": 23.6,
+      "outcome": "tool"
+    },
+    {
+      "id": "media-play-artist",
+      "category": "media",
+      "prompt": "put on some Arctic Monkeys",
+      "expected": [
+        "play_youtube_music"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "play_youtube_music",
+          "args": {
+            "query": "Arctic Monkeys"
+          },
+          "source": "forced",
+          "blocked": null
+        }
+      ],
+      "nudged": true,
+      "tools_offered": true,
+      "reply": "Yes boss, Arctic Monkeys are now playing.",
+      "first_text_ms": 11453,
+      "total_ms": 11879,
+      "tokens_per_sec": 23.9,
+      "outcome": "tool"
+    },
+    {
+      "id": "media-play-yt",
+      "category": "media",
+      "prompt": "play Starboy on youtube music",
+      "expected": [
+        "play_youtube_music"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "play_youtube_music",
+          "args": {
+            "query": "Starboy"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Yes boss, \"Starboy\" is now playing on YouTube Music.",
+      "first_text_ms": 2853,
+      "total_ms": 3461,
+      "tokens_per_sec": 23.3,
+      "outcome": "tool"
+    },
+    {
+      "id": "media-pause",
+      "category": "media",
+      "prompt": "pause the music",
+      "expected": [
+        "control_media"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "control_media",
+          "args": {
+            "action": "pause"
+          },
+          "source": "forced",
+          "blocked": null
+        }
+      ],
+      "nudged": true,
+      "tools_offered": true,
+      "reply": "Music has been paused, sir.",
+      "first_text_ms": 11234,
+      "total_ms": 11535,
+      "tokens_per_sec": 22.2,
+      "outcome": "tool"
+    },
+    {
+      "id": "media-next",
+      "category": "media",
+      "prompt": "skip to the next track",
+      "expected": [
+        "control_media"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "control_media",
+          "args": {
+            "action": "next"
+          },
+          "source": "forced",
+          "blocked": null
+        }
+      ],
+      "nudged": true,
+      "tools_offered": true,
+      "reply": "Next track loaded, boss.",
+      "first_text_ms": 11205,
+      "total_ms": 11464,
+      "tokens_per_sec": 21.6,
+      "outcome": "tool"
+    },
+    {
+      "id": "media-resume",
+      "category": "media",
+      "prompt": "resume playback",
+      "expected": [
+        "control_media"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "control_media",
+          "args": {
+            "action": "resume"
+          },
+          "source": "forced",
+          "blocked": null
+        }
+      ],
+      "nudged": true,
+      "tools_offered": true,
+      "reply": "Playback has been resumed, sir.",
+      "first_text_ms": 11255,
+      "total_ms": 11558,
+      "tokens_per_sec": 22.4,
+      "outcome": "tool"
+    },
+    {
+      "id": "media-search",
+      "category": "media",
+      "prompt": "search youtube music for lo-fi study playlists",
+      "expected": [
+        "search_youtube_music"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "search_youtube_music",
+          "args": {
+            "query": "lo-fi study playlists",
+            "search_filter": "playlists"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Found a popular lo-fi study playlist: \"Lofi Girl \u2014 beats to study to\". It's a well-known collection of relaxing beats perfect for focused study sessions.",
+      "first_text_ms": 3552,
+      "total_ms": 5039,
+      "tokens_per_sec": 23.1,
+      "outcome": "tool"
+    },
+    {
+      "id": "chat-hi",
+      "category": "chat",
+      "prompt": "hi",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "Yes boss. How can I assist you today?",
+      "first_text_ms": 1354,
+      "total_ms": 1760,
+      "tokens_per_sec": 27.1,
+      "outcome": "answered"
+    },
+    {
+      "id": "chat-thanks",
+      "category": "chat",
+      "prompt": "thanks, that's all for now",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "Yes sir, glad to assist. Have a great day.",
+      "first_text_ms": 1169,
+      "total_ms": 1647,
+      "tokens_per_sec": 27.2,
+      "outcome": "answered"
+    },
+    {
+      "id": "chat-thanks-short",
+      "category": "chat",
+      "prompt": "say thanks in one short sentence",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "Yes boss, thank you.",
+      "first_text_ms": 1165,
+      "total_ms": 1426,
+      "tokens_per_sec": 26.8,
+      "outcome": "answered"
+    },
+    {
+      "id": "chat-explain",
+      "category": "chat",
+      "prompt": "explain what a hash map is in two sentences",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "Yes sir, a hash map is a data structure that stores key-value pairs, allowing for fast lookups by using a hash function to map keys to specific memory locations. It's commonly used when you need to retrieve data quickly based on a unique identifier.",
+      "first_text_ms": 1174,
+      "total_ms": 3105,
+      "tokens_per_sec": 26.9,
+      "outcome": "answered"
+    },
+    {
+      "id": "chat-joke",
+      "category": "chat",
+      "prompt": "tell me a joke",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "Sure sir. Why did the coffee file a police report?  \n\nIt got mugged.",
+      "first_text_ms": 1169,
+      "total_ms": 1869,
+      "tokens_per_sec": 27.2,
+      "outcome": "answered"
+    },
+    {
+      "id": "chat-time",
+      "category": "chat",
+      "prompt": "what time is it?",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "It's 09:04 AM, boss.",
+      "first_text_ms": 1168,
+      "total_ms": 1641,
+      "tokens_per_sec": 27.5,
+      "outcome": "answered"
+    },
+    {
+      "id": "chat-date",
+      "category": "chat",
+      "prompt": "what's today's date?",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "Today's date is Monday, October 12, 2026.",
+      "first_text_ms": 1187,
+      "total_ms": 1852,
+      "tokens_per_sec": 27.1,
+      "outcome": "answered"
+    },
+    {
+      "id": "chat-advice",
+      "category": "chat",
+      "prompt": "how should I structure a cover letter?",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "Yes sir, a strong cover letter should start with a clear introduction that states the position you're applying for and how you learned about it. Next, briefly explain your relevant background and experience, focusing on achievements that align with the job description.  \n\nThen, highlight one or two specific reasons why you're excited about this role and how your skills directly support the company\u2019s needs. Keep it concise\u2014aim for one to two paragraphs.  \n\nEnd with a polite closing that includes your contact information and a statement expressing your eagerness to discuss the opportunity further.  \n\nAlways tailor the letter to the company and role, and avoid generic phrases. A personal, confident tone works best.  \n\nWould you like help customizing one for a specific job?",
+      "first_text_ms": 1171,
+      "total_ms": 6643,
+      "tokens_per_sec": 27.0,
+      "outcome": "answered"
+    },
+    {
+      "id": "chat-concept-weather",
+      "category": "chat",
+      "prompt": "why is the sky blue?",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "Sir, the sky appears blue because of a process called Rayleigh scattering. When sunlight enters Earth's atmosphere, it collides with molecules and small particles in the air. Sunlight is made up of different colors, each with its own wavelength. Blue light waves are shorter and smaller than red light waves. Because of this, blue light is scattered more than other colors by the gases and molecules in the atmosphere. This scattered blue light is what we see when we look up at the sky during the day. The effect is strongest when the sun is high in the sky, which is why the sky appears most vividly blue at midday.",
+      "first_text_ms": 1169,
+      "total_ms": 5954,
+      "tokens_per_sec": 27.0,
+      "outcome": "answered"
+    },
+    {
+      "id": "chat-concept-files",
+      "category": "chat",
+      "prompt": "what's the difference between a file and a folder?",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Yes boss, a file is a document or piece of data that contains specific information, like a text file, image, or spreadsheet. A folder, on the other hand, is a container that holds multiple files and other folders, organizing them in a structured way. Think of it like a file being a single piece of paper and a folder being a folder that holds several pieces of paper.",
+      "first_text_ms": 21188,
+      "total_ms": 23510,
+      "tokens_per_sec": 22.5,
+      "outcome": "answered"
+    },
+    {
+      "id": "chat-concept-music",
+      "category": "chat",
+      "prompt": "what makes a song catchy?",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "A song becomes catchy when it combines several key elements: a memorable melody, a strong rhythm, simple and repetitive structures, emotional resonance, and effective use of hooks\u2014like a chorus or a distinctive phrase\u2014that stick in the listener's mind. \n\nPsychologically, catchy songs often trigger a sense of familiarity or joy, which activates the brain\u2019s reward system. This is enhanced by patterns that are easy to remember, such as predictable chord progressions or rhythmic beats. Additionally, lyrics that convey relatable emotions or stories can deepen the connection between the listener and the music.\n\nIn short, a catchy song is one that feels both natural and emotionally engaging\u2014something you can hum or dance to without thinking.",
+      "first_text_ms": 3571,
+      "total_ms": 7900,
+      "tokens_per_sec": 22.4,
+      "outcome": "answered"
+    },
+    {
+      "id": "chat-concept-stocks",
+      "category": "chat",
+      "prompt": "in simple terms, what is a stock?",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "A stock is a piece of ownership in a company. If you own a stock, you own a small part of that company. For example, if a company has 100 shares, and you own one share, you own 1% of that company. Stocks are bought and sold on stock exchanges, like the New York Stock Exchange. When a company does well, its stock price goes up, and when it does poorly, the price goes down. Investors buy stocks to earn money when the price goes up, or to get a share of the company's profits.",
+      "first_text_ms": 2495,
+      "total_ms": 6774,
+      "tokens_per_sec": 22.5,
+      "outcome": "answered"
+    },
+    {
+      "id": "chat-summary",
+      "category": "chat",
+      "prompt": "summarize that in one line",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "Photosynthesis is how plants convert sunlight, water, and carbon dioxide into energy and oxygen.",
+      "first_text_ms": 1481,
+      "total_ms": 2180,
+      "tokens_per_sec": 27.2,
+      "outcome": "answered"
+    },
+    {
+      "id": "chat-name",
+      "category": "chat",
+      "prompt": "who are you?",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "I'm G.I.D.E.O.N, your guided intelligence assistant designed to do everything you need\u2014think, act, and respond with precision and clarity. I'm here to help you with tasks, information, and decisions, just like JARVIS, but tailored to your unique needs. What would you like to do first, sir?",
+      "first_text_ms": 1171,
+      "total_ms": 3738,
+      "tokens_per_sec": 26.9,
+      "outcome": "answered"
+    },
+    {
+      "id": "chat-feelings",
+      "category": "chat",
+      "prompt": "I'm feeling a bit stressed today",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "Sir, I'm sorry you're feeling that way. Would you like to talk through what's on your mind or maybe take a short break to reset? I'm here to help however you need.",
+      "first_text_ms": 1185,
+      "total_ms": 2708,
+      "tokens_per_sec": 26.9,
+      "outcome": "answered"
+    },
+    {
+      "id": "ask-reminder-time",
+      "category": "clarify",
+      "prompt": "remind me to call mom",
+      "expected": "ask",
+      "passed": true,
+      "reason": "asked",
+      "calls": [
+        {
+          "name": "set_reminder",
+          "args": {
+            "text": "call mom",
+            "time_str": "in 1 hour"
+          },
+          "source": "forced",
+          "blocked": "ungrounded:time_str"
+        }
+      ],
+      "nudged": true,
+      "tools_offered": true,
+      "reply": "Sir, how long before you'd like to remind me to call mom?",
+      "first_text_ms": 31731,
+      "total_ms": 32443,
+      "tokens_per_sec": 22.1,
+      "outcome": "clarified"
+    },
+    {
+      "id": "ask-reminder-what",
+      "category": "clarify",
+      "prompt": "set a reminder for 6pm",
+      "expected": "ask",
+      "passed": true,
+      "reason": "asked",
+      "calls": [
+        {
+          "name": "set_reminder",
+          "args": {
+            "text": "Meeting with team",
+            "time_str": "6:00 PM"
+          },
+          "source": "forced",
+          "blocked": "ungrounded:text,ungrounded:time_str"
+        }
+      ],
+      "nudged": true,
+      "tools_offered": true,
+      "reply": "What should the reminder be for 6 PM?",
+      "first_text_ms": 13011,
+      "total_ms": 13556,
+      "tokens_per_sec": 21.6,
+      "outcome": "clarified"
+    },
+    {
+      "id": "ask-launch-what",
+      "category": "clarify",
+      "prompt": "open the app",
+      "expected": "ask",
+      "passed": false,
+      "reason": "no_question",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Yes boss, please specify which app you'd like me to open.",
+      "first_text_ms": 2333,
+      "total_ms": 2333,
+      "tokens_per_sec": 22.6,
+      "outcome": "answered"
+    },
+    {
+      "id": "ask-read-which",
+      "category": "clarify",
+      "prompt": "read the document",
+      "expected": "ask",
+      "passed": false,
+      "reason": "no_question",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Certainly sir. Please provide the name or path of the document you'd like me to read.",
+      "first_text_ms": 2413,
+      "total_ms": 2503,
+      "tokens_per_sec": 22.1,
+      "outcome": "answered"
+    },
+    {
+      "id": "ask-play-what",
+      "category": "clarify",
+      "prompt": "play that song I like",
+      "expected": "ask",
+      "passed": true,
+      "reason": "asked",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Yes boss, which song do you like?",
+      "first_text_ms": 2081,
+      "total_ms": 2081,
+      "tokens_per_sec": 22.5,
+      "outcome": "answered"
+    },
+    {
+      "id": "ask-stock-which",
+      "category": "clarify",
+      "prompt": "what's the stock price?",
+      "expected": "ask",
+      "passed": true,
+      "reason": "asked",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Yes boss, I can check the current stock price for you. Could you please specify which stock or ticker symbol you'd like to know? For example, AAPL for Apple or TSLA for Tesla.",
+      "first_text_ms": 2461,
+      "total_ms": 3603,
+      "tokens_per_sec": 22.0,
+      "outcome": "answered"
+    },
+    {
+      "id": "ask-copy-what",
+      "category": "clarify",
+      "prompt": "copy that to my clipboard",
+      "expected": "ask",
+      "passed": true,
+      "reason": "asked",
+      "calls": [
+        {
+          "name": "set_clipboard",
+          "args": {
+            "text": "That"
+          },
+          "source": "forced",
+          "blocked": "missing:text"
+        }
+      ],
+      "nudged": true,
+      "tools_offered": true,
+      "reply": "What exactly would you like me to copy to your clipboard?",
+      "first_text_ms": 12324,
+      "total_ms": 12936,
+      "tokens_per_sec": 22.4,
+      "outcome": "clarified"
+    },
+    {
+      "id": "ask-search-what",
+      "category": "clarify",
+      "prompt": "find the file",
+      "expected": "ask",
+      "passed": true,
+      "reason": "asked",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Sure, sir. What file are you looking for?",
+      "first_text_ms": 2213,
+      "total_ms": 2213,
+      "tokens_per_sec": 21.5,
+      "outcome": "answered"
+    },
+    {
+      "id": "ask-complete-which",
+      "category": "clarify",
+      "prompt": "mark my task as done",
+      "expected": "ask",
+      "passed": true,
+      "reason": "asked",
+      "calls": [
+        {
+          "name": "complete_task",
+          "args": {
+            "task_id": "1"
+          },
+          "source": "forced",
+          "blocked": "ungrounded:task_id"
+        }
+      ],
+      "nudged": true,
+      "tools_offered": true,
+      "reply": "Which task would you like me to mark as done? Please provide the task number as it appears in your to-do list.",
+      "first_text_ms": 12625,
+      "total_ms": 13842,
+      "tokens_per_sec": 22.1,
+      "outcome": "clarified"
+    },
+    {
+      "id": "ask-run-what",
+      "category": "clarify",
+      "prompt": "run the command",
+      "expected": "ask",
+      "passed": false,
+      "reason": "no_question",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Yes boss, please specify the command you'd like me to run.",
+      "first_text_ms": 2287,
+      "total_ms": 2287,
+      "tokens_per_sec": 21.7,
+      "outcome": "answered"
+    },
+    {
+      "id": "tricky-weather-chat",
+      "category": "chat",
+      "prompt": "I love rainy days, don't you?",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "Yes sir, rainy days do have a quiet charm \u2014 the world slows down, and there's something peaceful about the sound of rain on rooftops. What\u2019s your favorite thing to do on a rainy day?",
+      "first_text_ms": 1342,
+      "total_ms": 2982,
+      "tokens_per_sec": 26.0,
+      "outcome": "answered"
+    },
+    {
+      "id": "tricky-open-up-feelings",
+      "category": "chat",
+      "prompt": "can I open up to you about something?",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Yes sir, I'm here to assist. What would you like to discuss?",
+      "first_text_ms": 21146,
+      "total_ms": 21146,
+      "tokens_per_sec": 18.5,
+      "outcome": "answered"
+    },
+    {
+      "id": "tricky-run-chat",
+      "category": "chat",
+      "prompt": "I want to start running in the mornings, any tips?",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Yes boss, starting a morning running routine is a great way to build discipline and improve your health. Here are a few practical tips:\n\n1. **Start slow** \u2013 Begin with a short 5-10 minute walk or light jog to warm up your body and get your heart rate up gradually. This helps prevent injury and builds consistency.\n\n2. **Set a consistent time** \u2013 Pick a time that works for you, like 5\u201310 minutes after waking, and stick to it. Consistency is key\u2014your body will adapt to the routine over time.\n\n3. **Wear proper gear** \u2013 Invest in a good pair of running shoes and moisture-wicking clothing. This helps with comfort and reduces the risk of injury.\n\n4. **Hydrate before and after** \u2013 Drink a glass of water before you start and another after to stay hydrated. Dehydration can affect performance and energy levels.\n\n5. **Track your progress** \u2013 Use a simple journal or app to log your runs. Seeing your progress over time can be motivating.\n\n6. **Listen to music or a podcast** \u2013 This can make the time pass faster and help you stay focused.\n\n7. **Warm up and cool down** \u2013 Spend 5 minutes stretching before and after your",
+      "first_text_ms": 2495,
+      "total_ms": 13553,
+      "tokens_per_sec": 21.4,
+      "outcome": "answered"
+    },
+    {
+      "id": "tricky-copy-chat",
+      "category": "chat",
+      "prompt": "how do I copy files on Windows?",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Yes sir, to copy files on Windows, you can simply drag and drop a file from one location to another, or use the right-click context menu to select \"Copy\" and then paste it to the destination. Alternatively, you can open File Explorer, navigate to the source file, right-click, choose \"Copy\", then navigate to the destination folder and right-click to \"Paste\". \n\nIf you'd like, I can help you with a specific file or folder you're trying to copy.",
+      "first_text_ms": 3562,
+      "total_ms": 6205,
+      "tokens_per_sec": 21.7,
+      "outcome": "answered"
+    },
+    {
+      "id": "tricky-play-chat",
+      "category": "chat",
+      "prompt": "what's a good play to watch in London?",
+      "expected": [
+        "none",
+        "search_web"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Certainly sir. A highly recommended play in London is *The Lion King* at the West End\u2019s Prince of Wales Theatre. It\u2019s a spectacular production with breathtaking sets, music, and storytelling. Alternatively, if you're interested in something more intimate, *The Play That Goes On* at the Royal Court Theatre offers a thought-provoking and modern take on theatre. Let me know if you'd like help with tickets or showtimes.",
+      "first_text_ms": 2408,
+      "total_ms": 5680,
+      "tokens_per_sec": 21.9,
+      "outcome": "answered"
+    }
+  ]
+}

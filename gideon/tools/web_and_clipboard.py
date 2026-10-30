@@ -113,7 +113,12 @@ def _search_wikipedia(query: str) -> list[str]:
         "The search terms to look up.",
         required=True,
         aliases=("search_query", "q"),
+        grounded=True,
+        ground_ignore=("search", "web", "online", "look", "up", "latest", "news"),
+        # "latest news" is a real query, though too generic to prove one.
+        filler=("search", "web", "online", "look", "up"),
     ),
+    untrusted_output=True,
     triggers={
         "search", "google", "look", "lookup", "browse", "internet", "web",
         "online", "news", "latest", "current",
@@ -144,6 +149,7 @@ def search_web(query: str) -> str:
 @tool(
     "get_clipboard",
     "Read whatever text or code is currently copied to the user's Windows clipboard. Call ONLY when the user asks you to read, analyze, check, or review their clipboard.",
+    untrusted_output=True,
     triggers={"clipboard", "paste", "copied"},
 )
 def get_clipboard() -> str:
@@ -169,6 +175,8 @@ def get_clipboard() -> str:
         "The content to copy into the clipboard.",
         required=True,
         aliases=("content",),
+        grounded=True,
+        ground_ignore=("copy", "clipboard"),
     ),
     triggers={"clipboard", "copy"},
 )

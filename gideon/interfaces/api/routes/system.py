@@ -14,7 +14,9 @@ from pydantic import BaseModel
 
 from gideon.app import Services
 from gideon.core import lifecycle
+from gideon.core.config import BATTERY_MODE
 from gideon.core.logs import get_logger
+from gideon.core.power import battery_percent, on_battery
 from gideon.interfaces.api.deps import get_services, require_api_token
 from gideon.tools.terminal import run_terminal_command
 
@@ -155,6 +157,9 @@ def get_system_metrics(services: Services = Depends(get_services)):
             "latency": latency_ms,
             "flux": _network.mbps(),
             "drive": drive_status,
+            # The HUD throttles its WebGL hologram on battery.
+            "on_battery": on_battery(),
+            "battery": battery_percent(),
         }
     except Exception as exc:
         log.exception("Metrics collection failed")
@@ -170,4 +175,6 @@ def health(services: Services = Depends(get_services)):
         "kokoro": engines["kokoro"],
         "vector_documents": services.memory.count(),
         "event_subscribers": services.events.subscriber_count,
+        "on_battery": on_battery(),
+        "battery_mode": BATTERY_MODE,
     }

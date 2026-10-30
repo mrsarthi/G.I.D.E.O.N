@@ -22,7 +22,7 @@ already started to drift.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 _MISSING_VALUES = (None, "")
@@ -46,6 +46,25 @@ class Param:
     aliases: tuple[str, ...] = ()
     default: Any = ""
     kwarg: str | None = None
+    # Maps a model-supplied value onto what the tool accepts (synonyms,
+    # malformed variants). Applied by the dispatcher and by the eval scorer,
+    # so the eval judges the value the tool would actually receive.
+    normalize: Callable[[Any], Any] | None = None
+    # Never-assume (PRD §5.5): the value must come from the user's own words.
+    # See tools/validation.py. `ground_ignore` lists words too generic to
+    # count as evidence for this parameter ("reminder" for a reminder text).
+    grounded: bool = False
+    ground_ignore: tuple[str, ...] = ()
+    # For enum parameters: the words that justify each value. A value is
+    # grounded when the user said one of its words — "another window" for
+    # window="new" — rather than the value itself.
+    evidence: dict[str, tuple[str, ...]] | None = field(default=None, hash=False)
+    # Words that say nothing as this parameter's value: a required value made
+    # only of these (plus filler) counts as missing. Defaults to
+    # `ground_ignore` — set_clipboard(text="Copy that to your clipboard") is
+    # the request repeated, not something to copy. Set it where an ignored
+    # word can be a real value (search_web's query "latest news").
+    filler: tuple[str, ...] | None = None
 
     def schema(self) -> dict[str, Any]:
         body: dict[str, Any] = {"type": self.type}
@@ -57,7 +76,8 @@ class Param:
     def resolve(self, arguments: dict[str, Any]) -> Any:
         for key in (self.name, *self.aliases):
             if key in arguments and arguments[key] not in _MISSING_VALUES:
-                return self._coerce(arguments[key])
+                value = self._coerce(arguments[key])
+                return self.normalize(value) if self.normalize else value
         return self.default
 
     def _coerce(self, value: Any) -> Any:
@@ -81,12 +101,21 @@ class ToolSpec:
     # Channels that may neither see nor run this tool. Telegram is remote and
     # guarded only by a user-ID allowlist, so it never gets code execution.
     blocked_channels: frozenset[str] = frozenset()
-    # Refused until the user confirms, when GIDEON_REQUIRE_CONFIRMATION=1.
+    # Waits for the user's approval when GIDEON_REQUIRE_CONFIRMATION is on.
     confirm: bool = False
+    # Can change the machine. Needs approval whenever outside content (web
+    # pages, documents, clipboard) entered the turn first, whatever the
+    # confirmation setting — that content may carry injected instructions.
+    privileged: bool = False
+    # Returns text from outside the user's control. Marked as data for the
+    # model, and it taints the rest of the turn (see `privileged`).
+    untrusted_output: bool = False
     # Words that signal the user wants this tool; feeds brain/intent.py.
     triggers: frozenset[str] = frozenset()
     # Pass the requesting channel through as `channel=` (for auditing).
     wants_channel: bool = False
+    # observe | mutate | execute (PRD §9.2). Set from policy.toml.
+    capability: str = "observe"
 
     def schema(self) -> dict[str, Any]:
         parameters: dict[str, Any] = {
@@ -130,6 +159,8 @@ def tool(
     exposed: bool = True,
     blocked_channels: set[str] | frozenset[str] = frozenset(),
     confirm: bool = False,
+    privileged: bool = False,
+    untrusted_output: bool = False,
     triggers: set[str] | frozenset[str] = frozenset(),
     wants_channel: bool = False,
 ) -> Callable[[Callable[..., str]], Callable[..., str]]:
@@ -146,6 +177,8 @@ def tool(
             exposed=exposed,
             blocked_channels=frozenset(blocked_channels),
             confirm=confirm,
+            privileged=privileged,
+            untrusted_output=untrusted_output,
             triggers=frozenset(triggers),
             wants_channel=wants_channel,
         )

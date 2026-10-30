@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from collections.abc import Iterator
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -49,11 +50,41 @@ def chat(data: MessageRequest, services: Services = Depends(get_services)):
     services.agent.record_user_message(session_id, message)
 
     def chat_generator() -> Iterator[str]:
+        # Approval cards and the trace id, raised mid-turn; flushed into the
+        # stream ahead of the next text so the page can attach feedback.
+        side_events: list[dict] = []
+        trace_ids: list[str] = []
+
+        def on_event(event: dict) -> None:
+            if "trace_id" in event:
+                trace_ids.append(event["trace_id"])
+            side_events.append(event)
+
+        reply: list[str] = []
+        started = time.perf_counter()
+        first_audio_ms: int | None = None
+        audio_count = 0
         try:
-            tokens = services.agent.stream(session_id, message)
+            tokens = services.agent.stream(session_id, message, on_event=on_event)
             for event in speak_as_you_go(tokens, services.speech, session_id, data.speak):
+                if "text" in event:
+                    reply.append(event["text"])
+                elif "audio_url" in event:
+                    audio_count += 1
+                    if first_audio_ms is None:
+                        first_audio_ms = round((time.perf_counter() - started) * 1000)
+                while side_events:
+                    yield _sse(side_events.pop(0))
                 yield _sse(event)
+            while side_events:
+                yield _sse(side_events.pop(0))
             yield _sse({"done": True})
+            services.titler.maybe_title(session_id, message, "".join(reply))
+            # The agent traced the turn; speech timing is only known here.
+            if trace_ids and data.speak:
+                services.agent.traces.annotate(
+                    trace_ids[0], first_audio_ms=first_audio_ms, audio_clips=audio_count
+                )
         except Exception as exc:
             # The response has already started, so an HTTPException here would
             # never reach the client. Send an explicit error event instead.

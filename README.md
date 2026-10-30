@@ -10,21 +10,28 @@ needs to (Telegram, the always-on reminder node, cloud TTS).
 
 - **Talks back.** Replies stream into a 3D HUD and are spoken sentence by
   sentence while the model is still generating.
-- **Does things.** 19 tools: system telemetry, reminders, app launching
-  (allowlist only), file search, web search, clipboard, volume and media keys,
-  YouTube Music, documents, weather, markets, Hacker News, IP lookup, Wolfram
-  Alpha and a guarded terminal.
+- **Does things.** 24 tools: system telemetry, reminders, notes and a to-do
+  list, app launching (Start Menu apps, new windows, "open dumbpipe in a new
+  VS Code window"), file search, web search, clipboard,
+  volume and media keys, YouTube Music, documents, weather, markets, news
+  headlines, football scores and tables, Hacker News, IP lookup, Wolfram
+  Alpha and a terminal.
+- **Asks before it acts.** Shell commands — and app launches after it has
+  read a web page or document — wait for you to click Approve.
 - **Is always reachable.** A tray icon and **Ctrl+Alt+G** quick-ask window,
   plus an optional Telegram bot.
 - **Remembers.** Conversations persist in SQLite; relevant past messages are
-  recalled through vector search.
+  recalled through vector search. It also knows your code projects — where
+  they are, their git branch and uncommitted changes — and keeps that current.
 - **Reminds you even when the PC is off**, via an optional Cloudflare Worker
   (`node/`).
 
 ## Quick start
 
 Requirements: Windows, Python 3.13+, [uv](https://docs.astral.sh/uv/), and
-[Ollama](https://ollama.com) with `llama3.2` and `nomic-embed-text` pulled.
+[Ollama](https://ollama.com) with `qwen3:4b-instruct` and `nomic-embed-text` pulled
+(`ollama pull qwen3:4b-instruct` — the *instruct* tag; plain `qwen3:4b` always
+"thinks" and is too slow for conversation).
 
 ```powershell
 uv sync                                   # install dependencies into .venv
@@ -40,6 +47,11 @@ starts at boot and the tray at logon:
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\install_autostart.ps1
 ```
+
+Without admin, add `-TrayOnly` (or tick **Start with Windows** in the tray
+menu): the tray then starts at logon and brings the engine up itself. Either
+way, G.I.D.E.O.N also appears in the Start Menu, restarts its engine if it
+dies, and preloads the model on mains power so the first question is fast.
 
 Other entry points:
 
@@ -57,11 +69,15 @@ you are most likely to want:
 
 | Variable | Default | Effect |
 | :--- | :--- | :--- |
-| `GIDEON_CHAT_MODEL` | `llama3.2:latest` | Chat model |
+| `GIDEON_CHAT_MODEL` | `qwen3:4b-instruct` | Chat model (chosen by eval — see `FINDINGS.md`) |
 | `GIDEON_TTS_ENGINE` | `kokoro` | `kokoro`, falling back to Piper |
 | `GIDEON_TELEGRAM_BOT_TOKEN` / `_ALLOWED_USERS` | — | Enable the Telegram bot (both required) |
 | `GIDEON_REMOTE_SCHEDULER_URL` / `_TOKEN` | — | Always-on reminder node (both required) |
 | `GIDEON_DATA_DIR` | `data/` | Where the database, vector store and logs live |
+| `GIDEON_REQUIRE_CONFIRMATION` | `1` | Shell commands from the model need your approval |
+| `GIDEON_ON_BATTERY` | `cpu` | On battery the model runs CPU-only (`off` pauses it); the GPU is never used unplugged |
+| `GIDEON_PROJECT_INDEX` | `1` | Learn your projects (search folders + VS Code history) and their git state |
+| `GIDEON_TOOL_ROUTER` | `auto` | Offer only relevant tools: on for models that re-read the tool list each turn (llama), off for models that cache it (Qwen) |
 
 See [GIDEON_ARCHITECTURE.md](GIDEON_ARCHITECTURE.md) for the full list.
 
@@ -86,6 +102,13 @@ tests/          pytest suite
 Dependencies point one way: `interfaces → app → brain / reminders / voice →
 tools → storage → core`.
 
+### What G.I.D.E.O.N may do
+
+`policy.toml` lists every tool with its class (observe / mutate / execute),
+whether it needs your approval, and which channels may use it. Edit it and
+restart the engine — no code change. A malformed file stops the engine
+rather than silently loosening a rule.
+
 ### Adding a tool
 
 Declare it next to its implementation and add the module to
@@ -104,8 +127,25 @@ def get_weather(location: str | None = None) -> str:
 ```
 
 That one declaration produces the schema the model sees, argument
-normalisation, channel policy (`blocked_channels`), the confirmation gate
-(`confirm`) and the words that make tool gating offer it (`triggers`).
+normalisation, the words that make gating and the router offer it
+(`triggers`), and — with `grounded=True` on a parameter — the never-assume
+check that the value came from the user's own words. Then add the tool to
+`policy.toml` with its class and approval rules; the tests fail until you do.
+
+## Measuring it
+
+Every conversation turn is traced (what was asked, which tools ran, how long
+each stage took, and your 👍/👎). To measure the model itself:
+
+```powershell
+.venv\Scripts\python.exe -m gideon.evals                                   # current model
+.venv\Scripts\python.exe -m gideon.evals --models qwen3:4b-instruct,llama3.2:latest
+.venv\Scripts\python.exe -m gideon.evals --only clarify,media              # a subset
+```
+
+Reports land in `evals/reports/`. Evals use fake tools and a throwaway
+database, so they never open apps or touch your data. Run them plugged in —
+on battery the model is CPU-only and a full run takes hours.
 
 ## Development
 

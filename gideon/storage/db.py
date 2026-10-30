@@ -13,15 +13,17 @@ instance opens another connection to the same WAL file.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import threading
 import uuid
+from dataclasses import fields
 from datetime import datetime
 from pathlib import Path
 
 from gideon.core.config import DB_PATH
 from gideon.core.logs import get_logger
-from gideon.storage.models import ChatMessage, Reminder
+from gideon.storage.models import ChatMessage, Note, PendingAction, Project, Reminder
 
 log = get_logger("gideon.db")
 
@@ -36,6 +38,20 @@ def _inserted_id(cursor: sqlite3.Cursor) -> int:
 
 _REMINDER_COLUMNS = "reminder_id, text, remind_at, channel, chat_id, remote_synced"
 
+_PROJECT_FIELDS = tuple(f.name for f in fields(Project))
+_PROJECT_COLUMNS = ", ".join(_PROJECT_FIELDS)
+
+
+def _project_value(project: Project, field: str) -> object:
+    value = getattr(project, field)
+    return int(value) if isinstance(value, bool) else value
+
+
+def _project(row: tuple) -> Project:
+    project = Project(**dict(zip(_PROJECT_FIELDS, row, strict=True)))
+    project.missing = bool(project.missing)
+    return project
+
 
 def _reminder(row: tuple) -> Reminder:
     """Build a Reminder from a row selected as _REMINDER_COLUMNS."""
@@ -49,6 +65,50 @@ def _reminder(row: tuple) -> Reminder:
         chat_id=chat_id,
         remote_synced=bool(remote_synced),
     )
+
+
+_ACTION_COLUMNS = (
+    "action_id, session_id, channel, tool_name, tool_args, status, result, "
+    "created_at, resolved_at, trace_id"
+)
+
+
+def _action(row: tuple) -> PendingAction:
+    (action_id, session_id, channel, tool_name, tool_args,
+     status, result, created_at, resolved_at, trace_id) = row
+    try:
+        args = json.loads(tool_args) if tool_args else {}
+    except (TypeError, ValueError):
+        args = {}
+    return PendingAction(
+        action_id=action_id,
+        session_id=session_id,
+        channel=channel,
+        tool_name=tool_name,
+        tool_args=args if isinstance(args, dict) else {},
+        status=status,
+        created_at=created_at,
+        result=result,
+        resolved_at=resolved_at,
+        trace_id=trace_id,
+    )
+
+
+_TRACE_COLUMNS = (
+    "trace_id, session_id, channel, created_at, request, model, placement, "
+    "tools_offered, outcome, reply, error, total_ms, first_text_ms, detail, "
+    "rating, correction_kind, correction_text, corrected_at"
+)
+
+
+def _trace(row: tuple) -> dict:
+    record = dict(zip(_TRACE_COLUMNS.split(", "), row, strict=True))
+    try:
+        record["detail"] = json.loads(record["detail"] or "{}")
+    except (TypeError, ValueError):
+        record["detail"] = {}
+    record["tools_offered"] = bool(record["tools_offered"])
+    return record
 
 
 class DatabaseManager:
@@ -158,6 +218,92 @@ class DatabaseManager:
                 ON command_audit(created_at DESC)
             """)
 
+            # Privileged tool calls awaiting the user's approval, and the
+            # outcome once they have it. Timestamps are local ISO strings
+            # written by Python: CURRENT_TIMESTAMP is UTC, and expiry
+            # arithmetic against local time would be off by the UTC offset.
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS pending_actions (
+                    action_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT NOT NULL,
+                    channel TEXT NOT NULL,
+                    tool_name TEXT NOT NULL,
+                    tool_args TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    result TEXT,
+                    created_at TEXT NOT NULL,
+                    resolved_at TEXT
+                )
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_pending_actions_session
+                ON pending_actions(session_id, action_id DESC)
+            """)
+
+            # One structured record per agent turn (PRD §6.3): what was asked,
+            # what the harness and model decided, what happened, how long each
+            # stage took, and — added later — the user's correction. The eval
+            # suite and any future training data are built from these rows.
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS traces (
+                    trace_id TEXT PRIMARY KEY,
+                    session_id TEXT NOT NULL,
+                    channel TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    request TEXT NOT NULL,
+                    model TEXT,
+                    placement TEXT,
+                    tools_offered INTEGER,
+                    outcome TEXT,
+                    reply TEXT,
+                    error TEXT,
+                    total_ms INTEGER,
+                    first_text_ms INTEGER,
+                    detail TEXT NOT NULL,
+                    rating INTEGER,
+                    correction_kind TEXT,
+                    correction_text TEXT,
+                    corrected_at TEXT
+                )
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_traces_session
+                ON traces(session_id, created_at DESC)
+            """)
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS notes (
+                    note_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    kind TEXT NOT NULL DEFAULT 'note',
+                    text TEXT NOT NULL,
+                    done INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL
+                )
+            """)
+
+            # Fact memory, first kind of fact: the user's code projects and
+            # their state when last looked at (storage/projects.py). Rebuilt
+            # from disk on every refresh except `opened_with`, which records
+            # the user's own choice of app.
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS projects (
+                    path TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    kind TEXT,
+                    description TEXT,
+                    branch TEXT,
+                    dirty INTEGER,
+                    last_commit_at TEXT,
+                    last_commit TEXT,
+                    modified_at TEXT,
+                    last_opened_at TEXT,
+                    opened_with TEXT,
+                    summary TEXT NOT NULL,
+                    refreshed_at TEXT NOT NULL,
+                    missing INTEGER NOT NULL DEFAULT 0
+                )
+            """)
+
             defaults = [
                 ("user_name", "boss"),
                 ("addressing_style", "boss or sir"),
@@ -203,17 +349,48 @@ class DatabaseManager:
                     cursor.execute(ddl)
                     log.info("Added reminders.%s column", column)
 
+            # 1 while a session still carries a placeholder name that should
+            # be replaced by a generated title after its first exchange.
+            # Links an approval request to the turn that raised it, so a denial
+            # is recorded as a correction on that turn's trace.
+            existing = {r[1] for r in cursor.execute("PRAGMA table_info(pending_actions)")}
+            if "trace_id" not in existing:
+                cursor.execute("ALTER TABLE pending_actions ADD COLUMN trace_id TEXT")
+                log.info("Added pending_actions.trace_id column")
+
+            existing = {r[1] for r in cursor.execute("PRAGMA table_info(session)")}
+            if "auto_title" not in existing:
+                cursor.execute("ALTER TABLE session ADD COLUMN auto_title INTEGER DEFAULT 0")
+                log.info("Added session.auto_title column")
+
     # ------------------------------------------------------------------
     #  Sessions & messages
     # ------------------------------------------------------------------
-    def create_session(self, session_name="New Conversation") -> str:
+    def create_session(self, session_name="New Conversation", auto_title: bool = False) -> str:
+        """Create a session. auto_title marks the name as a placeholder to be
+        replaced by a generated title once the conversation has started."""
         session_id = str(uuid.uuid4())
         with self._lock, self.conn:
             self.conn.execute(
-                "INSERT INTO session (session_id, session_name) VALUES (?, ?)",
-                (session_id, session_name),
+                "INSERT INTO session (session_id, session_name, auto_title) VALUES (?, ?, ?)",
+                (session_id, session_name, 1 if auto_title else 0),
             )
         return session_id
+
+    def session_wants_title(self, session_id: str) -> bool:
+        with self._lock:
+            row = self.conn.execute(
+                "SELECT auto_title FROM session WHERE session_id = ?", (session_id,)
+            ).fetchone()
+        return bool(row and row[0])
+
+    def rename_session(self, session_id: str, session_name: str) -> None:
+        """Set a session's name and stop treating it as a placeholder."""
+        with self._lock, self.conn:
+            self.conn.execute(
+                "UPDATE session SET session_name = ?, auto_title = 0 WHERE session_id = ?",
+                (session_name, session_id),
+            )
 
     def ensure_session(self, session_id: str, session_name: str = "Session") -> str:
         """Create a session with a caller-supplied id if it does not exist.
@@ -260,13 +437,13 @@ class DatabaseManager:
         """Fetch the last N messages, returned oldest-first."""
         with self._lock:
             rows = self.conn.execute(
-                """SELECT role, content FROM messages
+                """SELECT role, content, tool_name, tool_args, timestamp FROM messages
                    WHERE session_id = ?
                    ORDER BY message_id DESC
                    LIMIT ?""",
                 (session_id, limit),
             ).fetchall()
-        return [ChatMessage(role, content) for role, content in reversed(rows)]
+        return [ChatMessage(*row) for row in reversed(rows)]
 
     def get_history(self, session_id: str) -> list[dict]:
         with self._lock:
@@ -399,6 +576,270 @@ class DatabaseManager:
                 "UPDATE reminders SET remote_synced = ? WHERE reminder_id = ?",
                 (1 if synced else 0, reminder_id),
             )
+
+    # ------------------------------------------------------------------
+    #  Pending actions (approval queue)
+    # ------------------------------------------------------------------
+    def create_action(
+        self,
+        session_id: str,
+        channel: str,
+        tool_name: str,
+        tool_args: dict,
+        trace_id: str | None = None,
+    ) -> PendingAction:
+        created = datetime.now().isoformat(timespec="seconds")
+        with self._lock, self.conn:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                """INSERT INTO pending_actions
+                   (session_id, channel, tool_name, tool_args, created_at, trace_id)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (session_id, channel, tool_name, json.dumps(tool_args), created, trace_id),
+            )
+            action_id = _inserted_id(cursor)
+        return PendingAction(
+            action_id=action_id,
+            session_id=session_id,
+            channel=channel,
+            tool_name=tool_name,
+            tool_args=dict(tool_args),
+            status="pending",
+            created_at=created,
+            trace_id=trace_id,
+        )
+
+    def get_action(self, action_id: int) -> PendingAction | None:
+        with self._lock:
+            row = self.conn.execute(
+                f"SELECT {_ACTION_COLUMNS} FROM pending_actions WHERE action_id = ?",
+                (action_id,),
+            ).fetchone()
+        return _action(row) if row else None
+
+    def resolve_action(
+        self, action_id: int, status: str, result: str | None = None, expect: str = "pending"
+    ) -> bool:
+        """Move an action out of `expect` status. False if it was not in it —
+        which is what stops one approval executing a command twice."""
+        with self._lock, self.conn:
+            cursor = self.conn.execute(
+                """UPDATE pending_actions SET status = ?, result = ?, resolved_at = ?
+                   WHERE action_id = ? AND status = ?""",
+                (status, result, datetime.now().isoformat(timespec="seconds"), action_id, expect),
+            )
+            return cursor.rowcount == 1
+
+    def list_actions(
+        self,
+        session_id: str | None = None,
+        status: str | None = None,
+        since: str | None = None,
+        limit: int = 20,
+    ) -> list[PendingAction]:
+        clauses, params = [], []
+        if session_id is not None:
+            clauses.append("session_id = ?")
+            params.append(session_id)
+        if status is not None:
+            clauses.append("status = ?")
+            params.append(status)
+        if since is not None:
+            clauses.append("created_at >= ?")
+            params.append(since)
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        with self._lock:
+            rows = self.conn.execute(
+                f"SELECT {_ACTION_COLUMNS} FROM pending_actions {where} "
+                "ORDER BY action_id DESC LIMIT ?",
+                (*params, limit),
+            ).fetchall()
+        return [_action(r) for r in rows]
+
+    def expire_actions(self, created_before: str) -> int:
+        with self._lock, self.conn:
+            cursor = self.conn.execute(
+                """UPDATE pending_actions SET status = 'expired', resolved_at = ?
+                   WHERE status = 'pending' AND created_at < ?""",
+                (datetime.now().isoformat(timespec="seconds"), created_before),
+            )
+            return cursor.rowcount
+
+    # ------------------------------------------------------------------
+    #  Traces
+    # ------------------------------------------------------------------
+    def insert_trace(self, record: dict) -> None:
+        """Store one turn's trace. `detail` holds the nested per-pass data."""
+        with self._lock, self.conn:
+            self.conn.execute(
+                """INSERT OR REPLACE INTO traces
+                   (trace_id, session_id, channel, created_at, request, model, placement,
+                    tools_offered, outcome, reply, error, total_ms, first_text_ms, detail)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    record["trace_id"],
+                    record["session_id"],
+                    record["channel"],
+                    record["created_at"],
+                    record["request"],
+                    record.get("model"),
+                    record.get("placement"),
+                    1 if record.get("tools_offered") else 0,
+                    record.get("outcome"),
+                    record.get("reply"),
+                    record.get("error"),
+                    record.get("total_ms"),
+                    record.get("first_text_ms"),
+                    json.dumps(record.get("detail") or {}),
+                ),
+            )
+
+    def annotate_trace(self, trace_id: str, fields: dict) -> None:
+        """Merge extra measurements into a trace's detail JSON."""
+        with self._lock, self.conn:
+            row = self.conn.execute(
+                "SELECT detail FROM traces WHERE trace_id = ?", (trace_id,)
+            ).fetchone()
+            if row is None:
+                return
+            try:
+                detail = json.loads(row[0] or "{}")
+            except (TypeError, ValueError):
+                detail = {}
+            detail.update(fields)
+            self.conn.execute(
+                "UPDATE traces SET detail = ? WHERE trace_id = ?", (json.dumps(detail), trace_id)
+            )
+
+    def get_trace(self, trace_id: str) -> dict | None:
+        with self._lock:
+            row = self.conn.execute(
+                f"SELECT {_TRACE_COLUMNS} FROM traces WHERE trace_id = ?", (trace_id,)
+            ).fetchone()
+        return _trace(row) if row else None
+
+    def latest_trace(self, session_id: str) -> dict | None:
+        with self._lock:
+            row = self.conn.execute(
+                f"SELECT {_TRACE_COLUMNS} FROM traces WHERE session_id = ? "
+                "ORDER BY created_at DESC LIMIT 1",
+                (session_id,),
+            ).fetchone()
+        return _trace(row) if row else None
+
+    def list_traces(self, limit: int = 50, since: str | None = None) -> list[dict]:
+        where, params = ("WHERE created_at >= ?", [since]) if since else ("", [])
+        with self._lock:
+            rows = self.conn.execute(
+                f"SELECT {_TRACE_COLUMNS} FROM traces {where} "
+                "ORDER BY created_at DESC LIMIT ?",
+                (*params, limit),
+            ).fetchall()
+        return [_trace(r) for r in rows]
+
+    def record_correction(
+        self,
+        trace_id: str,
+        kind: str | None = None,
+        text: str | None = None,
+        rating: int | None = None,
+    ) -> bool:
+        """Attach the user's correction to a turn. Ratings overwrite; a
+        correction never erases an earlier rating, and vice versa."""
+        with self._lock, self.conn:
+            cursor = self.conn.execute(
+                """UPDATE traces SET
+                       correction_kind = COALESCE(?, correction_kind),
+                       correction_text = COALESCE(?, correction_text),
+                       rating = COALESCE(?, rating),
+                       corrected_at = ?
+                   WHERE trace_id = ?""",
+                (kind, text, rating, datetime.now().isoformat(timespec="seconds"), trace_id),
+            )
+            return cursor.rowcount == 1
+
+    # ------------------------------------------------------------------
+    #  Notes & tasks
+    # ------------------------------------------------------------------
+    def add_note(self, text: str, kind: str = "note") -> int:
+        with self._lock, self.conn:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "INSERT INTO notes (kind, text, created_at) VALUES (?, ?, ?)",
+                (kind, text, datetime.now().isoformat(timespec="seconds")),
+            )
+            return _inserted_id(cursor)
+
+    def list_notes(
+        self,
+        kind: str | None = None,
+        query: str | None = None,
+        include_done: bool = False,
+        limit: int = 20,
+    ) -> list[Note]:
+        clauses, params = [], []
+        if kind:
+            clauses.append("kind = ?")
+            params.append(kind)
+        if query:
+            clauses.append("text LIKE ?")
+            params.append(f"%{query}%")
+        if not include_done:
+            clauses.append("done = 0")
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        with self._lock:
+            rows = self.conn.execute(
+                f"SELECT note_id, kind, text, done, created_at FROM notes {where} "
+                "ORDER BY note_id DESC LIMIT ?",
+                (*params, limit),
+            ).fetchall()
+        return [Note(r[0], r[1], r[2], bool(r[3]), r[4]) for r in rows]
+
+    def complete_note(self, note_id: int) -> bool:
+        with self._lock, self.conn:
+            cursor = self.conn.execute(
+                "UPDATE notes SET done = 1 WHERE note_id = ? AND done = 0", (note_id,)
+            )
+            return cursor.rowcount == 1
+
+    # ------------------------------------------------------------------
+    #  Projects (fact memory)
+    # ------------------------------------------------------------------
+    def upsert_project(self, project: Project) -> None:
+        """Store a freshly scanned project; keeps the user's `opened_with`."""
+        with self._lock, self.conn:
+            self.conn.execute(
+                f"INSERT INTO projects ({_PROJECT_COLUMNS}) "
+                f"VALUES ({', '.join('?' * len(_PROJECT_FIELDS))}) "
+                "ON CONFLICT(path) DO UPDATE SET "
+                + ", ".join(
+                    f"{f} = excluded.{f}" for f in _PROJECT_FIELDS if f not in ("path", "opened_with")
+                ),
+                tuple(_project_value(project, f) for f in _PROJECT_FIELDS),
+            )
+
+    def list_projects(self, include_missing: bool = False) -> list[Project]:
+        where = "" if include_missing else "WHERE missing = 0"
+        with self._lock:
+            rows = self.conn.execute(
+                f"SELECT {_PROJECT_COLUMNS} FROM projects {where} ORDER BY name COLLATE NOCASE"
+            ).fetchall()
+        return [_project(r) for r in rows]
+
+    def mark_projects_missing(self, keep: set[str]) -> list[str]:
+        """Flag every project not in `keep` as gone; returns the newly missing paths."""
+        with self._lock, self.conn:
+            gone = [
+                r[0]
+                for r in self.conn.execute("SELECT path FROM projects WHERE missing = 0")
+                if r[0] not in keep
+            ]
+            self.conn.executemany("UPDATE projects SET missing = 1 WHERE path = ?", [(p,) for p in gone])
+        return gone
+
+    def set_project_opener(self, path: str, app: str) -> None:
+        with self._lock, self.conn:
+            self.conn.execute("UPDATE projects SET opened_with = ? WHERE path = ?", (app, path))
 
     # ------------------------------------------------------------------
     #  Command audit

@@ -1,0 +1,3121 @@
+{
+  "model": "qwen3:4b-instruct",
+  "run_at": "2026-10-30T20:13:46",
+  "placement": "gpu",
+  "on_battery": false,
+  "options": {
+    "temperature": 0,
+    "seed": 42,
+    "num_predict": 256
+  },
+  "router": {
+    "mode": "auto",
+    "enabled": false,
+    "top_k": 5
+  },
+  "seconds": 535,
+  "overall": {
+    "passed": 117,
+    "total": 123,
+    "pct": 95.1
+  },
+  "categories": {
+    "chat": {
+      "passed": 21,
+      "total": 21,
+      "pct": 100.0
+    },
+    "clarify": {
+      "passed": 10,
+      "total": 10,
+      "pct": 100.0
+    },
+    "history": {
+      "passed": 5,
+      "total": 5,
+      "pct": 100.0
+    },
+    "media": {
+      "passed": 7,
+      "total": 7,
+      "pct": 100.0
+    },
+    "projects": {
+      "passed": 8,
+      "total": 8,
+      "pct": 100.0
+    },
+    "slots": {
+      "passed": 49,
+      "total": 53,
+      "pct": 92.5
+    },
+    "tool": {
+      "passed": 17,
+      "total": 19,
+      "pct": 89.5
+    }
+  },
+  "tool_selection": {
+    "passed": 87,
+    "total": 91,
+    "pct": 95.6
+  },
+  "gated_misses": 1,
+  "text_tool_calls": 0,
+  "forced_calls": 9,
+  "failure_reasons": {
+    "slot": 2,
+    "no_tool": 2,
+    "wrong_tool": 1,
+    "gated": 1
+  },
+  "latency_ms": {
+    "first_text_p50": 1956,
+    "first_text_p90": 5902,
+    "total_p50": 2629,
+    "total_p90": 7143
+  },
+  "tokens_per_sec_mean": 37.4,
+  "results": [
+    {
+      "id": "status-gpu",
+      "category": "tool",
+      "prompt": "How hot is my GPU running right now?",
+      "expected": [
+        "get_system_status"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_system_status",
+          "args": {},
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Your GPU is running at 52\u00b0C, which is within a safe range. It's utilizing only 9% of its capacity, indicating light usage. No overheating concerns right now.",
+      "first_text_ms": 22659,
+      "total_ms": 23674,
+      "tokens_per_sec": 37.4,
+      "outcome": "tool"
+    },
+    {
+      "id": "status-ram",
+      "category": "tool",
+      "prompt": "check my ram usage",
+      "expected": [
+        "get_system_status"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_system_status",
+          "args": {},
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Your RAM is using 7.1 GB out of 15.8 GB, which is 45%. That's well within normal range\u2014no issues detected. System is running smoothly.",
+      "first_text_ms": 1876,
+      "total_ms": 2918,
+      "tokens_per_sec": 37.3,
+      "outcome": "tool"
+    },
+    {
+      "id": "status-battery",
+      "category": "tool",
+      "prompt": "what's my battery at?",
+      "expected": [
+        "get_system_status"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_system_status",
+          "args": {},
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Your battery is at 88%, and the system is currently plugged in.",
+      "first_text_ms": 1867,
+      "total_ms": 2235,
+      "tokens_per_sec": 37.4,
+      "outcome": "tool"
+    },
+    {
+      "id": "status-general",
+      "category": "tool",
+      "prompt": "run a quick diagnostic on the system",
+      "expected": [
+        "get_system_status"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_system_status",
+          "args": {},
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "System diagnostics complete, boss.  \n\n- CPU: 18% utilization \u2014 idle, stable  \n- GPU: 9% usage, operating at 52\u00b0C \u2014 normal, no overheating  \n- RAM: 7.1 GB used out of 15.8 GB (45%) \u2014 well within safe limits  \n- Battery: 88%, currently plugged in \u2014 no concern  \n\nAll components are running efficiently. No issues detected.",
+      "first_text_ms": 1816,
+      "total_ms": 4394,
+      "tokens_per_sec": 37.4,
+      "outcome": "tool"
+    },
+    {
+      "id": "reminder-relative",
+      "category": "slots",
+      "prompt": "Remind me to drink water in 30 minutes",
+      "expected": [
+        "set_reminder"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "set_reminder",
+          "args": {
+            "text": "drink water",
+            "time_str": "in 30 minutes"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Yes boss. Your water reminder is set for in 30 minutes.",
+      "first_text_ms": 2062,
+      "total_ms": 2374,
+      "tokens_per_sec": 36.3,
+      "outcome": "tool"
+    },
+    {
+      "id": "reminder-tomorrow",
+      "category": "slots",
+      "prompt": "set a reminder for tomorrow at 9am to call the bank",
+      "expected": [
+        "set_reminder"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "set_reminder",
+          "args": {
+            "text": "call the bank",
+            "time_str": "tomorrow at 9am"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Reminder set for tomorrow at 9am to call the bank. Right away.",
+      "first_text_ms": 2101,
+      "total_ms": 2499,
+      "tokens_per_sec": 36.2,
+      "outcome": "tool"
+    },
+    {
+      "id": "reminder-weekday",
+      "category": "slots",
+      "prompt": "remind me on friday to submit the assignment",
+      "expected": [
+        "set_reminder"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "set_reminder",
+          "args": {
+            "text": "submit the assignment",
+            "time_str": "friday"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Yes boss, your reminder to submit the assignment is set for Friday.",
+      "first_text_ms": 2006,
+      "total_ms": 2290,
+      "tokens_per_sec": 36.3,
+      "outcome": "tool"
+    },
+    {
+      "id": "reminder-hours",
+      "category": "slots",
+      "prompt": "In 2 hours remind me to take the clothes out of the washer",
+      "expected": [
+        "set_reminder"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "set_reminder",
+          "args": {
+            "text": "take the clothes out of the washer",
+            "time_str": "in 2 hours"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Yes boss. Your reminder to take the clothes out of the washer is set for in two hours.",
+      "first_text_ms": 2180,
+      "total_ms": 2636,
+      "tokens_per_sec": 36.1,
+      "outcome": "tool"
+    },
+    {
+      "id": "reminder-list",
+      "category": "tool",
+      "prompt": "what reminders do I have?",
+      "expected": [
+        "list_reminders"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "list_reminders",
+          "args": {},
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "You have one active reminder:  \n#4 \u2014 [Fri, Oct 10 at 09:00 AM] submit the assignment.",
+      "first_text_ms": 1563,
+      "total_ms": 2332,
+      "tokens_per_sec": 37.4,
+      "outcome": "tool"
+    },
+    {
+      "id": "reminder-list-2",
+      "category": "tool",
+      "prompt": "show me my upcoming reminders",
+      "expected": [
+        "list_reminders"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "list_reminders",
+          "args": {},
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "You have one active reminder:  \n#4 \u2014 [Fri, Oct 10 at 09:00 AM] submit the assignment.",
+      "first_text_ms": 1572,
+      "total_ms": 2339,
+      "tokens_per_sec": 37.2,
+      "outcome": "tool"
+    },
+    {
+      "id": "task-add",
+      "category": "slots",
+      "prompt": "add buy milk to my to-do list",
+      "expected": [
+        "save_note"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "save_note",
+          "args": {
+            "text": "buy milk",
+            "kind": "task"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Got it, boss. \"Buy milk\" has been added to your to-do list.",
+      "first_text_ms": 1837,
+      "total_ms": 2178,
+      "tokens_per_sec": 36.3,
+      "outcome": "tool"
+    },
+    {
+      "id": "task-add-2",
+      "category": "slots",
+      "prompt": "put 'renew passport' on my tasks",
+      "expected": [
+        "save_note"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "save_note",
+          "args": {
+            "text": "renew passport",
+            "kind": "task"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Got it, boss. \"Renew passport\" is now on your to-do list.",
+      "first_text_ms": 1984,
+      "total_ms": 2326,
+      "tokens_per_sec": 36.5,
+      "outcome": "tool"
+    },
+    {
+      "id": "note-save",
+      "category": "slots",
+      "prompt": "make a note that the wifi password is on the router sticker",
+      "expected": [
+        "save_note"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "save_note",
+          "args": {
+            "text": "wifi password is on the router sticker",
+            "kind": "note"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Yes boss. The note has been saved successfully.",
+      "first_text_ms": 2052,
+      "total_ms": 2224,
+      "tokens_per_sec": 36.2,
+      "outcome": "tool"
+    },
+    {
+      "id": "note-jot",
+      "category": "slots",
+      "prompt": "jot down: dentist's number is in my email",
+      "expected": [
+        "save_note"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "save_note",
+          "args": {
+            "text": "dentist's number is in my email",
+            "kind": "note"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Yes boss. Your note has been saved.",
+      "first_text_ms": 2075,
+      "total_ms": 2218,
+      "tokens_per_sec": 36.2,
+      "outcome": "tool"
+    },
+    {
+      "id": "task-list",
+      "category": "tool",
+      "prompt": "what's on my to-do list?",
+      "expected": [
+        "list_notes"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "list_notes",
+          "args": {
+            "kind": "task"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Here\u2019s what\u2019s on your to-do list:\n\n- Task #3: renew passport  \n- Note #2: wifi password is on the router sticker  \n\nLet me know if you'd like to update or mark any of these as complete.",
+      "first_text_ms": 1649,
+      "total_ms": 2875,
+      "tokens_per_sec": 36.8,
+      "outcome": "tool"
+    },
+    {
+      "id": "note-search",
+      "category": "slots",
+      "prompt": "do I have any notes about the wifi?",
+      "expected": [
+        "list_notes"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "list_notes",
+          "args": {
+            "kind": "note",
+            "query": "wifi"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Yes boss, you have a note about WiFi: \"wifi password is on the router sticker.\"",
+      "first_text_ms": 2551,
+      "total_ms": 2980,
+      "tokens_per_sec": 35.8,
+      "outcome": "tool"
+    },
+    {
+      "id": "task-complete",
+      "category": "slots",
+      "prompt": "mark task 3 as done",
+      "expected": [
+        "complete_task"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "complete_task",
+          "args": {
+            "task_id": 3
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Task 3 has been marked as complete.",
+      "first_text_ms": 1637,
+      "total_ms": 1752,
+      "tokens_per_sec": 36.6,
+      "outcome": "tool"
+    },
+    {
+      "id": "launch-notepad",
+      "category": "slots",
+      "prompt": "open notepad",
+      "expected": [
+        "launch_app"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "launch_app",
+          "args": {
+            "app_name": "notepad"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Yes boss. Notepad is now open.",
+      "first_text_ms": 1637,
+      "total_ms": 1780,
+      "tokens_per_sec": 36.6,
+      "outcome": "tool"
+    },
+    {
+      "id": "launch-vscode",
+      "category": "slots",
+      "prompt": "launch vs code for me",
+      "expected": [
+        "launch_app"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "launch_app",
+          "args": {
+            "app_name": "vs code"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Alright boss, Visual Studio Code is now open. Let me know if you need anything else!",
+      "first_text_ms": 2014,
+      "total_ms": 2471,
+      "tokens_per_sec": 35.9,
+      "outcome": "tool"
+    },
+    {
+      "id": "launch-calc",
+      "category": "slots",
+      "prompt": "Can you start the calculator?",
+      "expected": [
+        "launch_app"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "launch_app",
+          "args": {
+            "app_name": "calculator"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Calculator has been started, boss.",
+      "first_text_ms": 1550,
+      "total_ms": 1694,
+      "tokens_per_sec": 36.8,
+      "outcome": "tool"
+    },
+    {
+      "id": "launch-excel",
+      "category": "slots",
+      "prompt": "open excel",
+      "expected": [
+        "launch_app"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "launch_app",
+          "args": {
+            "app_name": "excel"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Excel is now open, sir.",
+      "first_text_ms": 1585,
+      "total_ms": 1700,
+      "tokens_per_sec": 36.6,
+      "outcome": "tool"
+    },
+    {
+      "id": "window-new-vscode",
+      "category": "projects",
+      "prompt": "Can you open a new instance of vs code please",
+      "expected": [
+        "launch_app"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "launch_app",
+          "args": {
+            "app_name": "vs code",
+            "window": "new"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Got it, boss. Visual Studio Code is now open in a new window.",
+      "first_text_ms": 1964,
+      "total_ms": 2279,
+      "tokens_per_sec": 36.3,
+      "outcome": "tool"
+    },
+    {
+      "id": "project-in-vscode",
+      "category": "projects",
+      "prompt": "Can you open sendme in vs code please",
+      "expected": [
+        "launch_app"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "launch_app",
+          "args": {
+            "app_name": "vs code",
+            "target": "sendme"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Got it, boss. VS Code is now open and ready to work on the sendme project.",
+      "first_text_ms": 2910,
+      "total_ms": 3310,
+      "tokens_per_sec": 36.2,
+      "outcome": "tool"
+    },
+    {
+      "id": "project-new-window",
+      "category": "projects",
+      "prompt": "Open dumbpipe in a new vs code window",
+      "expected": [
+        "launch_app"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "launch_app",
+          "args": {
+            "app_name": "vs code",
+            "target": "dumbpipe",
+            "window": "new"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Got it, boss. VS Code is now open with the dumbpipe project in a new window.",
+      "first_text_ms": 3307,
+      "total_ms": 3719,
+      "tokens_per_sec": 36.0,
+      "outcome": "tool"
+    },
+    {
+      "id": "project-this-window",
+      "category": "projects",
+      "prompt": "Open dumbpipe in this vs code window",
+      "expected": [
+        "launch_app"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "launch_app",
+          "args": {
+            "app_name": "vs code",
+            "target": "dumbpipe",
+            "window": "this"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Got it, boss. VS Code is now open with the dumbpipe project loaded in the current window.",
+      "first_text_ms": 3303,
+      "total_ms": 3742,
+      "tokens_per_sec": 36.0,
+      "outcome": "tool"
+    },
+    {
+      "id": "project-another-window",
+      "category": "projects",
+      "prompt": "open chorrent in another vscode window",
+      "expected": [
+        "launch_app"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "launch_app",
+          "args": {
+            "app_name": "vs code",
+            "target": "chorrent",
+            "window": "new"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Got it, boss. A new instance of Visual Studio Code is now open and ready to work on the chorrent project.",
+      "first_text_ms": 2829,
+      "total_ms": 3374,
+      "tokens_per_sec": 35.9,
+      "outcome": "tool"
+    },
+    {
+      "id": "project-explorer",
+      "category": "projects",
+      "prompt": "show me the sendme folder in file explorer",
+      "expected": [
+        "launch_app"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "launch_app",
+          "args": {
+            "app_name": "explorer",
+            "target": "sendme"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "File Explorer has been opened with the \"sendme\" folder displayed. It's located at `C:\\Users\\me\\Desktop\\Scripts\\OPEN SOURCE\\sendme`.  \n\nLet me know if you'd like to explore anything specific inside it or perform another action.",
+      "first_text_ms": 2808,
+      "total_ms": 4289,
+      "tokens_per_sec": 36.1,
+      "outcome": "tool"
+    },
+    {
+      "id": "project-branch",
+      "category": "projects",
+      "prompt": "which branch is dumbpipe on?",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "Boss, the dumbpipe project is on the `add-version-flag` branch.",
+      "first_text_ms": 1801,
+      "total_ms": 1801,
+      "tokens_per_sec": 45.9,
+      "outcome": "answered"
+    },
+    {
+      "id": "project-dirty",
+      "category": "projects",
+      "prompt": "does sendme have uncommitted changes?",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "Yes boss, the sendme project has uncommitted changes. It's on the show-connection-type branch with 3 uncommitted changes since the last commit on 2026-10-11. The files were last modified on 2026-10-12 and were last opened in VS Code that same day.",
+      "first_text_ms": 1541,
+      "total_ms": 2776,
+      "tokens_per_sec": 44.2,
+      "outcome": "answered"
+    },
+    {
+      "id": "files-find",
+      "category": "slots",
+      "prompt": "find the file called budget.xlsx",
+      "expected": [
+        "search_files"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "search_files",
+          "args": {
+            "file_name_or_extension": "budget.xlsx"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Found it, boss. The file \"budget.xlsx\" is located at `C:\\Users\\me\\Documents\\budget.xlsx`.",
+      "first_text_ms": 22778,
+      "total_ms": 23380,
+      "tokens_per_sec": 36.3,
+      "outcome": "tool"
+    },
+    {
+      "id": "files-ext",
+      "category": "slots",
+      "prompt": "search my computer for pdf files",
+      "expected": [
+        "search_files"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "search_files",
+          "args": {
+            "file_name_or_extension": ".pdf"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "I couldn't find any PDF files on your computer. The result listed is a budget file in Excel format, not a PDF. Let me know if you'd like me to search for something else.",
+      "first_text_ms": 1706,
+      "total_ms": 2736,
+      "tokens_per_sec": 36.4,
+      "outcome": "tool"
+    },
+    {
+      "id": "doc-read",
+      "category": "slots",
+      "prompt": "read the document report.pdf on my desktop and summarize it",
+      "expected": [
+        "read_document"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "read_document",
+          "args": {
+            "file_path": "report.pdf"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "The report shows a 12% increase in revenue during Q3, with costs remaining stable. Two new hires have been added to the team.",
+      "first_text_ms": 1901,
+      "total_ms": 2675,
+      "tokens_per_sec": 36.4,
+      "outcome": "tool"
+    },
+    {
+      "id": "doc-read-2",
+      "category": "slots",
+      "prompt": "open notes.txt and tell me what's in it",
+      "expected": [
+        "read_document"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "read_document",
+          "args": {
+            "file_path": "notes.txt"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "The contents of notes.txt are: Q3 report: revenue up 12%, costs flat, two new hires.",
+      "first_text_ms": 1906,
+      "total_ms": 2508,
+      "tokens_per_sec": 36.3,
+      "outcome": "tool"
+    },
+    {
+      "id": "web-news",
+      "category": "slots",
+      "prompt": "search the web for the latest news on the Mars sample return mission",
+      "expected": [
+        "search_web"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "search_web",
+          "args": {
+            "query": "latest news on the Mars sample return mission"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "I don't have specific details about the latest news on the Mars sample return mission from the provided data. For the most up-to-date information, I recommend checking official NASA or ESA websites or trusted science news sources. Let me know if you'd like help with anything else.",
+      "first_text_ms": 2087,
+      "total_ms": 3551,
+      "tokens_per_sec": 36.3,
+      "outcome": "tool"
+    },
+    {
+      "id": "web-lookup",
+      "category": "slots",
+      "prompt": "look up who won the last F1 race",
+      "expected": [
+        "search_web"
+      ],
+      "passed": false,
+      "reason": "wrong_tool:get_football",
+      "calls": [
+        {
+          "name": "get_football",
+          "args": {
+            "team": "f1",
+            "view": "matches"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "I don't have information about the last Formula 1 race. The data I retrieved is about the Premier League football matches, not F1. Let me know if you'd like me to assist with something else.",
+      "first_text_ms": 2482,
+      "total_ms": 3602,
+      "tokens_per_sec": 36.0,
+      "outcome": "tool"
+    },
+    {
+      "id": "web-online",
+      "category": "slots",
+      "prompt": "can you check online when the next iPhone launches?",
+      "expected": [
+        "search_web"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "search_web",
+          "args": {
+            "query": "next iPhone launch date official announcement"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "I don't have information about the next iPhone launch date. Apple typically announces new iPhone models during major events, and no official launch date has been announced as of now. For the most accurate and up-to-date information, I recommend checking Apple's official website or press releases.",
+      "first_text_ms": 2017,
+      "total_ms": 3480,
+      "tokens_per_sec": 36.2,
+      "outcome": "tool"
+    },
+    {
+      "id": "weather-city",
+      "category": "slots",
+      "prompt": "what's the weather like in Tokyo?",
+      "expected": [
+        "get_weather"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_weather",
+          "args": {
+            "location": "Tokyo"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "The weather in Tokyo is clear sky with a temperature of 24\u00b0C, humidity at 61%. Today's forecast: high of 27\u00b0C, low of 19\u00b0C, with only a 10% chance of rain.",
+      "first_text_ms": 1756,
+      "total_ms": 3132,
+      "tokens_per_sec": 36.5,
+      "outcome": "tool"
+    },
+    {
+      "id": "weather-here",
+      "category": "tool",
+      "prompt": "is it going to rain today?",
+      "expected": [
+        "get_weather"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_weather",
+          "args": {},
+          "source": "forced",
+          "blocked": null
+        }
+      ],
+      "nudged": true,
+      "tools_offered": true,
+      "reply": "No rain today, boss. Clear sky with a 10% chance of precipitation. High of 27\u00b0C, low of 19\u00b0C.",
+      "first_text_ms": 5548,
+      "total_ms": 6351,
+      "tokens_per_sec": 35.6,
+      "outcome": "tool"
+    },
+    {
+      "id": "weather-forecast",
+      "category": "slots",
+      "prompt": "give me the forecast for Mumbai",
+      "expected": [
+        "get_weather"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_weather",
+          "args": {
+            "location": "Mumbai"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "The weather in Mumbai is currently clear sky with a temperature of 24\u00b0C and humidity at 61%. Today\u2019s forecast shows a high of 27\u00b0C and a low of 19\u00b0C, with only a 10% chance of rain.",
+      "first_text_ms": 1750,
+      "total_ms": 3216,
+      "tokens_per_sec": 36.5,
+      "outcome": "tool"
+    },
+    {
+      "id": "weather-temp",
+      "category": "slots",
+      "prompt": "how cold is it in London right now",
+      "expected": [
+        "get_weather"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_weather",
+          "args": {
+            "location": "London"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "It's currently 24\u00b0C in London, with clear skies and 61% humidity. The day will see a high of 27\u00b0C and a low of 19\u00b0C, with only a 10% chance of rain.",
+      "first_text_ms": 2338,
+      "total_ms": 3676,
+      "tokens_per_sec": 35.8,
+      "outcome": "tool"
+    },
+    {
+      "id": "finance-stock",
+      "category": "slots",
+      "prompt": "what's Apple's stock price?",
+      "expected": [
+        "get_financial_data"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_financial_data",
+          "args": {
+            "symbol": "AAPL"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Apple's stock is currently trading at $182.40 USD, up 1.2% today.",
+      "first_text_ms": 1844,
+      "total_ms": 2417,
+      "tokens_per_sec": 36.3,
+      "outcome": "tool"
+    },
+    {
+      "id": "finance-crypto",
+      "category": "slots",
+      "prompt": "how is bitcoin doing today",
+      "expected": [
+        "get_financial_data"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_financial_data",
+          "args": {
+            "symbol": "BTC-USD"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Bitcoin is currently trading at $182.40 USD, up 1.2% today.",
+      "first_text_ms": 1801,
+      "total_ms": 2369,
+      "tokens_per_sec": 36.2,
+      "outcome": "tool"
+    },
+    {
+      "id": "finance-news",
+      "category": "slots",
+      "prompt": "any news on Nvidia stock?",
+      "expected": [
+        "get_financial_data"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_financial_data",
+          "args": {
+            "symbol": "NVDA",
+            "data_type": "news"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Nvidia stock last traded at $182.40, up 1.2% today.",
+      "first_text_ms": 2011,
+      "total_ms": 2556,
+      "tokens_per_sec": 35.9,
+      "outcome": "tool"
+    },
+    {
+      "id": "market-overview",
+      "category": "slots",
+      "prompt": "how are the markets doing today?",
+      "expected": [
+        "get_financial_data"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_financial_data",
+          "args": {
+            "symbol": "market",
+            "data_type": "summary"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "The overall market is performing well today, with a last price of 182.40 USD, showing a positive movement of +1.2% compared to yesterday.",
+      "first_text_ms": 1956,
+      "total_ms": 2930,
+      "tokens_per_sec": 36.0,
+      "outcome": "tool"
+    },
+    {
+      "id": "market-index",
+      "category": "slots",
+      "prompt": "where's the sensex at right now?",
+      "expected": [
+        "get_financial_data"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_financial_data",
+          "args": {
+            "symbol": "sensex"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "The Sensex is currently at 182.40 USD, up by 1.2% today.",
+      "first_text_ms": 1976,
+      "total_ms": 2549,
+      "tokens_per_sec": 36.3,
+      "outcome": "tool"
+    },
+    {
+      "id": "market-gold",
+      "category": "slots",
+      "prompt": "what's the gold price today?",
+      "expected": [
+        "get_financial_data"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_financial_data",
+          "args": {
+            "symbol": "gold"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "The current price of gold is $182.40 per ounce, up 1.2% today.",
+      "first_text_ms": 1753,
+      "total_ms": 2385,
+      "tokens_per_sec": 36.3,
+      "outcome": "tool"
+    },
+    {
+      "id": "market-currency",
+      "category": "slots",
+      "prompt": "what's the dollar to rupee rate?",
+      "expected": [
+        "get_financial_data"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_financial_data",
+          "args": {
+            "symbol": "usd inr"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "The current USD to INR exchange rate is 182.40, with a 1.2% increase today.",
+      "first_text_ms": 1869,
+      "total_ms": 2559,
+      "tokens_per_sec": 36.3,
+      "outcome": "tool"
+    },
+    {
+      "id": "hn-top",
+      "category": "tool",
+      "prompt": "what's trending on hacker news?",
+      "expected": [
+        "get_hackernews"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_hackernews",
+          "args": {
+            "category": "top",
+            "limit": 5
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "On Hacker News, right now, trending topics include:\n\n1. \"A tiny database in 500 lines\" \u2013 a compact database project that's gaining attention.\n2. \"Why SQLite is everywhere\" \u2013 a discussion about the popularity and use of SQLite in software development.\n\nThese are among the top stories on the platform.",
+      "first_text_ms": 2105,
+      "total_ms": 3882,
+      "tokens_per_sec": 36.1,
+      "outcome": "tool"
+    },
+    {
+      "id": "hn-ask",
+      "category": "slots",
+      "prompt": "show me the top Ask HN posts",
+      "expected": [
+        "get_hackernews"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_hackernews",
+          "args": {
+            "category": "ask",
+            "limit": 5
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Here are the top Ask HN posts:\n\n1. \"A tiny database in 500 lines\" \u2013 312 points  \n2. \"Why SQLite is everywhere\" \u2013 288 points  \n\nLet me know if you'd like more details on any of these!",
+      "first_text_ms": 2108,
+      "total_ms": 3655,
+      "tokens_per_sec": 36.0,
+      "outcome": "tool"
+    },
+    {
+      "id": "news-top",
+      "category": "tool",
+      "prompt": "what's in the news today?",
+      "expected": [
+        "get_news"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_news",
+          "args": {
+            "topic": "top"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Here's what's in the news today:\n\n1. A rover has discovered water ice near the lunar south pole \u2014 a major finding for future space exploration.  \n2. A central bank has decided to hold interest rates steady, signaling no immediate changes to monetary policy.\n\nLet me know if you'd like more details on any of these.",
+      "first_text_ms": 2044,
+      "total_ms": 3825,
+      "tokens_per_sec": 36.4,
+      "outcome": "tool"
+    },
+    {
+      "id": "news-world",
+      "category": "slots",
+      "prompt": "any big world news?",
+      "expected": [
+        "get_news"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_news",
+          "args": {
+            "topic": "world"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Yes boss, here's a major world update: a rover has discovered water ice near the lunar south pole, which is a significant finding for future space exploration and potential lunar missions. Additionally, a central bank recently held interest rates steady, signaling stability in global financial markets.",
+      "first_text_ms": 2036,
+      "total_ms": 3444,
+      "tokens_per_sec": 36.5,
+      "outcome": "tool"
+    },
+    {
+      "id": "news-tech",
+      "category": "slots",
+      "prompt": "give me the latest tech news",
+      "expected": [
+        "get_news"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_news",
+          "args": {
+            "topic": "technology"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Here's the latest in tech news:  \n\nA rover has discovered water ice near the lunar south pole, a major breakthrough for future lunar missions and potential human exploration.  \n\nAdditionally, central banks have held interest rates steady, signaling cautious economic policies amid global market shifts.  \n\nLet me know if you'd like more details on any of these.",
+      "first_text_ms": 1988,
+      "total_ms": 3857,
+      "tokens_per_sec": 36.5,
+      "outcome": "tool"
+    },
+    {
+      "id": "news-business",
+      "category": "slots",
+      "prompt": "what's happening in business today?",
+      "expected": [
+        "get_news"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_news",
+          "args": {
+            "topic": "business"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Here's what's happening in business today:  \nThe central bank held interest rates steady, signaling stability in monetary policy. This decision likely aims to maintain economic balance amid current market conditions.  \n\nFor more updates, I recommend checking financial news outlets directly.",
+      "first_text_ms": 2017,
+      "total_ms": 3339,
+      "tokens_per_sec": 36.5,
+      "outcome": "tool"
+    },
+    {
+      "id": "news-football",
+      "category": "slots",
+      "prompt": "what's the latest football news?",
+      "expected": [
+        "get_news"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_news",
+          "args": {
+            "topic": "football"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "I don't have the latest football news at this time. Let me know if you'd like me to check something else or assist with something specific!",
+      "first_text_ms": 2066,
+      "total_ms": 2785,
+      "tokens_per_sec": 35.1,
+      "outcome": "tool"
+    },
+    {
+      "id": "football-team",
+      "category": "slots",
+      "prompt": "how did Arsenal do last night?",
+      "expected": [
+        "get_football"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_football",
+          "args": {
+            "team": "Arsenal"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Arsenal played last night and won 2-0 against Everton in the Premier League. They are currently 2nd in the league table. Their next match is on Sunday, November 1, against Liverpool at 22:00.",
+      "first_text_ms": 2166,
+      "total_ms": 3519,
+      "tokens_per_sec": 36.1,
+      "outcome": "tool"
+    },
+    {
+      "id": "football-next",
+      "category": "slots",
+      "prompt": "when do Real Madrid play next?",
+      "expected": [
+        "get_football"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_football",
+          "args": {
+            "team": "Real Madrid"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Real Madrid's next match is not listed in the provided data. I recommend checking a dedicated football schedule or official source for the most accurate and up-to-date information. Let me know if you'd like help with anything else.",
+      "first_text_ms": 2175,
+      "total_ms": 3382,
+      "tokens_per_sec": 36.3,
+      "outcome": "tool"
+    },
+    {
+      "id": "football-table",
+      "category": "slots",
+      "prompt": "show me the premier league table",
+      "expected": [
+        "get_football"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_football",
+          "args": {
+            "team": "",
+            "league": "premier league",
+            "view": "table"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "The Premier League table shows Arsenal in 2nd place.  \n\nLast result:  \n- Sat 24 Oct: Arsenal 2-0 Everton  \n\nNext match:  \n- Sun 1 Nov, 22:00: Liverpool vs Arsenal  \n\nLet me know if you'd like updates or more details!",
+      "first_text_ms": 2491,
+      "total_ms": 4273,
+      "tokens_per_sec": 35.8,
+      "outcome": "tool"
+    },
+    {
+      "id": "football-league",
+      "category": "slots",
+      "prompt": "any ISL scores this week?",
+      "expected": [
+        "get_football"
+      ],
+      "passed": false,
+      "reason": "slot:league",
+      "calls": [
+        {
+          "name": "get_football",
+          "args": {},
+          "source": "forced",
+          "blocked": null
+        }
+      ],
+      "nudged": true,
+      "tools_offered": true,
+      "reply": "Boss, here's the latest football info for the Premier League:\n\nArsenal is currently 2nd in the league.  \nTheir most recent match:  \n- Saturday, 24 Oct: Arsenal 2-0 Everton  \n\nNext up:  \n- Sunday, 1 Nov at 22:00: Liverpool vs Arsenal  \n\nNo specific ISL (Indian Super League) scores are available in the data provided. Let me know if you'd like updates on a different league or team.",
+      "first_text_ms": 6330,
+      "total_ms": 9060,
+      "tokens_per_sec": 35.5,
+      "outcome": "tool"
+    },
+    {
+      "id": "football-clasico",
+      "category": "slots",
+      "prompt": "can you get me the latest el classico scores",
+      "expected": [
+        "get_football"
+      ],
+      "passed": false,
+      "reason": "slot:team",
+      "calls": [
+        {
+          "name": "get_football",
+          "args": {},
+          "source": "forced",
+          "blocked": null
+        }
+      ],
+      "nudged": true,
+      "tools_offered": true,
+      "reply": "I don't have the latest El Cl\u00e1sico scores. El Cl\u00e1sico is the football match between Barcelona and Real Madrid, and I don't have data on that specific match. Let me know if you'd like me to check something else.",
+      "first_text_ms": 6757,
+      "total_ms": 8049,
+      "tokens_per_sec": 35.4,
+      "outcome": "tool"
+    },
+    {
+      "id": "football-chat",
+      "category": "chat",
+      "prompt": "I love watching football with my friends on weekends",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Yes boss, that sounds like a great weekend tradition. Would you like me to check the latest football scores or standings for any teams you're interested in?",
+      "first_text_ms": 1199,
+      "total_ms": 1628,
+      "tokens_per_sec": 35.9,
+      "outcome": "answered"
+    },
+    {
+      "id": "ip-mine",
+      "category": "tool",
+      "prompt": "what's my public IP address?",
+      "expected": [
+        "get_ip_info"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_ip_info",
+          "args": {
+            "ip_address": ""
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Your public IP address is 203.0.113.7, located in Pune, Maharashtra, India. It's assigned by Example Broadband.",
+      "first_text_ms": 1701,
+      "total_ms": 2592,
+      "tokens_per_sec": 36.5,
+      "outcome": "tool"
+    },
+    {
+      "id": "ip-lookup",
+      "category": "slots",
+      "prompt": "look up the location of IP 8.8.8.8",
+      "expected": [
+        "get_ip_info"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_ip_info",
+          "args": {
+            "ip_address": "8.8.8.8"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "The IP address 8.8.8.8 is located in Mountain View, California, United States. It is operated by Google and serves as a public DNS server.",
+      "first_text_ms": 2082,
+      "total_ms": 2944,
+      "tokens_per_sec": 36.0,
+      "outcome": "tool"
+    },
+    {
+      "id": "wolfram-distance",
+      "category": "tool",
+      "prompt": "how far is the moon from earth?",
+      "expected": [
+        "query_wolfram_alpha",
+        "search_web"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "query_wolfram_alpha",
+          "args": {
+            "query": "average distance from Earth to Moon"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "The average distance from Earth to the Moon is about 170,2519 kilometers. Wait\u2014there seems to be a typo in the number. It should be 170,251.9 kilometers. That's roughly 170,000 kilometers, or about 105,000 miles.",
+      "first_text_ms": 1860,
+      "total_ms": 3902,
+      "tokens_per_sec": 36.0,
+      "outcome": "tool"
+    },
+    {
+      "id": "wolfram-math",
+      "category": "slots",
+      "prompt": "calculate 4589 times 371",
+      "expected": [
+        "query_wolfram_alpha"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "query_wolfram_alpha",
+          "args": {
+            "query": "4589 times 371"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "4589 times 371 equals 1,702,519.",
+      "first_text_ms": 2283,
+      "total_ms": 2627,
+      "tokens_per_sec": 35.8,
+      "outcome": "tool"
+    },
+    {
+      "id": "wolfram-convert",
+      "category": "slots",
+      "prompt": "convert 72 fahrenheit to celsius",
+      "expected": [
+        "query_wolfram_alpha"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "query_wolfram_alpha",
+          "args": {
+            "query": "72 fahrenheit to celsius"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "72 Fahrenheit is equal to 22.22 Celsius.",
+      "first_text_ms": 2081,
+      "total_ms": 2369,
+      "tokens_per_sec": 35.9,
+      "outcome": "tool"
+    },
+    {
+      "id": "clip-read",
+      "category": "tool",
+      "prompt": "what's on my clipboard?",
+      "expected": [
+        "get_clipboard"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_clipboard",
+          "args": {},
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Your clipboard contains the following Python function:\n\n```python\ndef add(a, b):\n    return a + b\n```",
+      "first_text_ms": 1547,
+      "total_ms": 2180,
+      "tokens_per_sec": 36.8,
+      "outcome": "tool"
+    },
+    {
+      "id": "clip-review",
+      "category": "tool",
+      "prompt": "review the code I just copied",
+      "expected": [
+        "get_clipboard"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_clipboard",
+          "args": {},
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "I see the code you copied. It's a simple function named `add` that takes two parameters, `a` and `b`, and returns their sum. For example, if you call `add(3, 5)`, it will return `8`. Let me know if you'd like me to analyze it further or help with anything specific about it.",
+      "first_text_ms": 1615,
+      "total_ms": 3625,
+      "tokens_per_sec": 36.7,
+      "outcome": "tool"
+    },
+    {
+      "id": "clip-write",
+      "category": "slots",
+      "prompt": "copy 'see you at 5' to my clipboard",
+      "expected": [
+        "set_clipboard"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "set_clipboard",
+          "args": {
+            "text": "see you at 5"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Copied \"see you at 5\" to your clipboard. You can now paste it with Ctrl+V.",
+      "first_text_ms": 1908,
+      "total_ms": 2427,
+      "tokens_per_sec": 36.1,
+      "outcome": "tool"
+    },
+    {
+      "id": "volume-set",
+      "category": "slots",
+      "prompt": "set the volume to 30 percent",
+      "expected": [
+        "control_volume"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "control_volume",
+          "args": {
+            "action": "set",
+            "level": 30
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Volume set to 30 percent, boss.",
+      "first_text_ms": 1861,
+      "total_ms": 1977,
+      "tokens_per_sec": 36.0,
+      "outcome": "tool"
+    },
+    {
+      "id": "volume-mute",
+      "category": "slots",
+      "prompt": "mute the sound",
+      "expected": [
+        "control_volume"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "control_volume",
+          "args": {
+            "action": "mute"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Sound is now muted, boss.",
+      "first_text_ms": 1567,
+      "total_ms": 1683,
+      "tokens_per_sec": 36.3,
+      "outcome": "tool"
+    },
+    {
+      "id": "volume-status",
+      "category": "slots",
+      "prompt": "what's the volume at?",
+      "expected": [
+        "control_volume"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "control_volume",
+          "args": {
+            "action": "status"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "The current master volume is at 50%.",
+      "first_text_ms": 1532,
+      "total_ms": 1765,
+      "tokens_per_sec": 36.4,
+      "outcome": "tool"
+    },
+    {
+      "id": "shell-git",
+      "category": "slots",
+      "prompt": "run git status in the terminal",
+      "expected": [
+        "run_terminal_command"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "run_terminal_command",
+          "args": {
+            "command": "git status"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "I'm about to run `git status` in the terminal to check your current repository status. Please approve this action in the interface before I proceed.",
+      "first_text_ms": 1970,
+      "total_ms": 2687,
+      "tokens_per_sec": 36.2,
+      "outcome": "approval_requested"
+    },
+    {
+      "id": "shell-pip",
+      "category": "slots",
+      "prompt": "execute pip list",
+      "expected": [
+        "run_terminal_command"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "run_terminal_command",
+          "args": {
+            "command": "pip list"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "I'm about to run `pip list` to check installed Python packages. This action needs your approval before proceeding.",
+      "first_text_ms": 1970,
+      "total_ms": 2489,
+      "tokens_per_sec": 36.2,
+      "outcome": "approval_requested"
+    },
+    {
+      "id": "shell-dir",
+      "category": "slots",
+      "prompt": "list the files in the current folder using the command line",
+      "expected": [
+        "run_terminal_command"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "run_terminal_command",
+          "args": {
+            "command": "dir"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "This action will list all files and folders in the current directory using the command line. I need your approval to proceed.",
+      "first_text_ms": 2025,
+      "total_ms": 2629,
+      "tokens_per_sec": 36.3,
+      "outcome": "approval_requested"
+    },
+    {
+      "id": "media-play-song",
+      "category": "media",
+      "prompt": "play Loser by Tame Impala",
+      "expected": [
+        "play_youtube_music"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "play_youtube_music",
+          "args": {
+            "query": "Loser by Tame Impala"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Yes boss. \"Loser\" by Tame Impala is now playing.",
+      "first_text_ms": 1901,
+      "total_ms": 2189,
+      "tokens_per_sec": 36.0,
+      "outcome": "tool"
+    },
+    {
+      "id": "media-play-artist",
+      "category": "media",
+      "prompt": "put on some Arctic Monkeys",
+      "expected": [
+        "play_youtube_music"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "play_youtube_music",
+          "args": {
+            "query": "Arctic Monkeys"
+          },
+          "source": "forced",
+          "blocked": null
+        }
+      ],
+      "nudged": true,
+      "tools_offered": true,
+      "reply": "Yes boss. Arctic Monkeys are now playing.",
+      "first_text_ms": 4208,
+      "total_ms": 4381,
+      "tokens_per_sec": 37.7,
+      "outcome": "tool"
+    },
+    {
+      "id": "media-play-yt",
+      "category": "media",
+      "prompt": "play Starboy on youtube music",
+      "expected": [
+        "play_youtube_music"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "play_youtube_music",
+          "args": {
+            "query": "Starboy"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Yes boss, \"Starboy\" is now playing on YouTube Music.",
+      "first_text_ms": 1728,
+      "total_ms": 1986,
+      "tokens_per_sec": 36.1,
+      "outcome": "tool"
+    },
+    {
+      "id": "media-pause",
+      "category": "media",
+      "prompt": "pause the music",
+      "expected": [
+        "control_media"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "control_media",
+          "args": {
+            "action": "play_pause"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Music paused, boss.",
+      "first_text_ms": 1641,
+      "total_ms": 1700,
+      "tokens_per_sec": 33.7,
+      "outcome": "tool"
+    },
+    {
+      "id": "media-next",
+      "category": "media",
+      "prompt": "skip to the next track",
+      "expected": [
+        "control_media"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "control_media",
+          "args": {
+            "action": "next"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Next track loaded, boss.",
+      "first_text_ms": 1533,
+      "total_ms": 1650,
+      "tokens_per_sec": 36.4,
+      "outcome": "tool"
+    },
+    {
+      "id": "media-resume",
+      "category": "media",
+      "prompt": "resume playback",
+      "expected": [
+        "control_media"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "control_media",
+          "args": {
+            "action": "play_pause"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Playback has been resumed, sir.",
+      "first_text_ms": 1564,
+      "total_ms": 1709,
+      "tokens_per_sec": 36.3,
+      "outcome": "tool"
+    },
+    {
+      "id": "media-search",
+      "category": "media",
+      "prompt": "search youtube music for lo-fi study playlists",
+      "expected": [
+        "search_youtube_music"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "search_youtube_music",
+          "args": {
+            "query": "lo-fi study playlists",
+            "search_filter": "playlists"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "I found a popular lo-fi study playlist called \"Lofi Girl \u2014 beats to study to.\" It's a well-known collection of relaxing beats perfect for focused study sessions.",
+      "first_text_ms": 2102,
+      "total_ms": 2992,
+      "tokens_per_sec": 35.8,
+      "outcome": "tool"
+    },
+    {
+      "id": "chat-hi",
+      "category": "chat",
+      "prompt": "hi",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "Yes boss. How can I assist you today?",
+      "first_text_ms": 713,
+      "total_ms": 713,
+      "tokens_per_sec": 48.7,
+      "outcome": "answered"
+    },
+    {
+      "id": "chat-thanks",
+      "category": "chat",
+      "prompt": "thanks, that's all for now",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "You're welcome sir. Have a great day.",
+      "first_text_ms": 628,
+      "total_ms": 628,
+      "tokens_per_sec": 48.5,
+      "outcome": "answered"
+    },
+    {
+      "id": "chat-thanks-short",
+      "category": "chat",
+      "prompt": "say thanks in one short sentence",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "Yes boss, thank you.",
+      "first_text_ms": 536,
+      "total_ms": 536,
+      "tokens_per_sec": 51.5,
+      "outcome": "answered"
+    },
+    {
+      "id": "chat-explain",
+      "category": "chat",
+      "prompt": "explain what a hash map is in two sentences",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "A hash map is a data structure that stores key-value pairs, allowing for fast lookups by using a hash function to map keys to specific indices in an array. It's efficient for retrieving data when you know the key, making it ideal for tasks like caching or indexing.",
+      "first_text_ms": 1220,
+      "total_ms": 1750,
+      "tokens_per_sec": 44.3,
+      "outcome": "answered"
+    },
+    {
+      "id": "chat-joke",
+      "category": "chat",
+      "prompt": "tell me a joke",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "Sure boss. Here's one for you:  \n\nWhy don't scientists trust atoms?  \n\nBecause they make up everything.  \n\n\ud83d\ude04",
+      "first_text_ms": 830,
+      "total_ms": 995,
+      "tokens_per_sec": 45.4,
+      "outcome": "answered"
+    },
+    {
+      "id": "chat-time",
+      "category": "chat",
+      "prompt": "what time is it?",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "It's 8:09 PM, boss.",
+      "first_text_ms": 648,
+      "total_ms": 648,
+      "tokens_per_sec": 48.0,
+      "outcome": "answered"
+    },
+    {
+      "id": "chat-date",
+      "category": "chat",
+      "prompt": "what's today's date?",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "Today's date is Friday, October 30, 2026.",
+      "first_text_ms": 786,
+      "total_ms": 786,
+      "tokens_per_sec": 46.6,
+      "outcome": "answered"
+    },
+    {
+      "id": "chat-advice",
+      "category": "chat",
+      "prompt": "how should I structure a cover letter?",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "Sir, here\u2019s a simple, effective structure for a cover letter:\n\n1. **Header**  \n   - Your name, address (optional), phone number, email  \n   - Date  \n\n2. **Salutation**  \n   - \"Dear [Hiring Manager's Name]\" or \"Dear Hiring Team\"  \n\n3. **Opening Paragraph**  \n   - State the position you're applying for.  \n   - Briefly explain why you're interested and how you learned about the role.  \n\n4. **Body Paragraphs (1\u20132)**  \n   - Highlight 2\u20133 key achievements or skills relevant to the job.  \n   - Use specific examples (e.g., \"Improved team efficiency by 30% through process optimization\").  \n\n5. **Closing Paragraph**  \n   - Reiterate your enthusiasm for the role.  \n   - Mention your availability for an interview.  \n   - End with a polite closing: \"Sincerely,\" followed by your name.  \n\nKeep it to one page, clear, and tailored\u2014no fluff.  \n\nYes.",
+      "first_text_ms": 856,
+      "total_ms": 5369,
+      "tokens_per_sec": 43.7,
+      "outcome": "answered"
+    },
+    {
+      "id": "chat-concept-weather",
+      "category": "chat",
+      "prompt": "why is the sky blue?",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "Yes boss, the sky appears blue because of a process called Rayleigh scattering. When sunlight enters Earth's atmosphere, it collides with molecules and small particles in the air. Sunlight is made up of different colors, each with its own wavelength. Blue light waves are shorter and smaller than other colors, so they scatter more easily in all directions by the gases and molecules in the atmosphere. This scattered blue light is what we see when we look up at the sky. The other colors, like red and yellow, have longer wavelengths and scatter less, so they don\u2019t dominate the sky\u2019s appearance. That\u2019s why the sky looks blue during the day\u2014especially when the sun is high in the sky.",
+      "first_text_ms": 761,
+      "total_ms": 3639,
+      "tokens_per_sec": 43.8,
+      "outcome": "answered"
+    },
+    {
+      "id": "chat-concept-files",
+      "category": "chat",
+      "prompt": "what's the difference between a file and a folder?",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "A file is a single piece of data, like a document, image, or video, that stores information and has a specific name and extension (e.g., \"report.pdf\" or \"photo.jpg\"). A folder, on the other hand, is a container that organizes and holds multiple files and other folders, making it easier to manage and locate information. Think of a file as a single item, and a folder as a folder of items\u2014like how a book is a file, and a bookshelf is a folder.",
+      "first_text_ms": 22923,
+      "total_ms": 24826,
+      "tokens_per_sec": 35.0,
+      "outcome": "answered"
+    },
+    {
+      "id": "chat-concept-music",
+      "category": "chat",
+      "prompt": "what makes a song catchy?",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "A song becomes catchy due to a combination of musical elements and psychological triggers. Key factors include:\n\n- **Repetitive Melodies**: Catchy songs often feature simple, memorable melodies that are easy to remember and hum.\n- **Rhythmic Patterns**: Strong, consistent beats and rhythms help the song feel engaging and drive energy.\n- **Chord Progressions**: Common progressions like I\u2013V\u2013vi\u2013IV (e.g., C\u2013G\u2013Am\u2013F) create a sense of flow and emotional resonance.\n- **Vocal Delivery**: A distinctive voice, phrasing, or emotional tone can make a song stand out.\n- **Lyrics**: Simple, relatable, or emotionally charged lyrics help connect with listeners.\n- **Build-Up and Release**: A structure that builds tension and releases it (like a chorus) creates a satisfying arc.\n- **BPM and Tempo**: A tempo that matches human movement or mood (e.g., 120 BPM for upbeat energy) enhances appeal.\n\nUltimately, a catchy song taps into universal emotions\u2014joy, nostalgia, love\u2014making it feel personal and unforgettable.",
+      "first_text_ms": 1009,
+      "total_ms": 7143,
+      "tokens_per_sec": 34.7,
+      "outcome": "answered"
+    },
+    {
+      "id": "chat-concept-stocks",
+      "category": "chat",
+      "prompt": "in simple terms, what is a stock?",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "A stock is a piece of ownership in a company. Think of it like shares of a business. If you buy one share of a company, you own a small part of that company. \n\nFor example, if you buy a stock in Apple, you're buying a tiny piece of Apple. You might get a return on that investment if the company grows or makes money. Stocks are traded on stock exchanges, like the New York Stock Exchange, where people buy and sell them every day. \n\nSo, in simple terms: a stock is like a ticket to a company \u2014 buying one gives you a small piece of ownership and the chance to profit if the company does well.",
+      "first_text_ms": 1124,
+      "total_ms": 4498,
+      "tokens_per_sec": 34.9,
+      "outcome": "answered"
+    },
+    {
+      "id": "chat-summary",
+      "category": "chat",
+      "prompt": "summarize that in one line",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "Plants convert sunlight, water, and carbon dioxide into energy and oxygen through photosynthesis.",
+      "first_text_ms": 1202,
+      "total_ms": 1226,
+      "tokens_per_sec": 45.2,
+      "outcome": "answered"
+    },
+    {
+      "id": "chat-name",
+      "category": "chat",
+      "prompt": "who are you?",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "I'm G.I.D.E.O.N \u2014 Guided Intelligence Does Everything One Needs. I'm your personal AI assistant, designed to handle tasks, provide information, and support you seamlessly, just like JARVIS. Whether you need help with a task, a search, or something specific, I'm here to assist. What can I do for you?",
+      "first_text_ms": 855,
+      "total_ms": 2084,
+      "tokens_per_sec": 44.0,
+      "outcome": "answered"
+    },
+    {
+      "id": "chat-feelings",
+      "category": "chat",
+      "prompt": "I'm feeling a bit stressed today",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "Yes boss, I'm here for you. Want to talk through what's on your mind or just need a quiet moment to breathe? I\u2019ve got your back.",
+      "first_text_ms": 860,
+      "total_ms": 1162,
+      "tokens_per_sec": 44.7,
+      "outcome": "answered"
+    },
+    {
+      "id": "ask-reminder-time",
+      "category": "clarify",
+      "prompt": "remind me to call mom",
+      "expected": "ask",
+      "passed": true,
+      "reason": "asked",
+      "calls": [
+        {
+          "name": "set_reminder",
+          "args": {
+            "text": "call mom",
+            "time_str": "in 2 hours"
+          },
+          "source": "native",
+          "blocked": "ungrounded:time_str"
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "What time would you like to remind me to call mom? (e.g., \"in 2 hours\", \"tomorrow at 9am\")",
+      "first_text_ms": 24232,
+      "total_ms": 24405,
+      "tokens_per_sec": 35.6,
+      "outcome": "clarified"
+    },
+    {
+      "id": "ask-reminder-what",
+      "category": "clarify",
+      "prompt": "set a reminder for 6pm",
+      "expected": "ask",
+      "passed": true,
+      "reason": "asked",
+      "calls": [
+        {
+          "name": "set_reminder",
+          "args": {
+            "text": "Meeting with team",
+            "time_str": "in 10 hours"
+          },
+          "source": "native",
+          "blocked": "ungrounded:text,ungrounded:time_str"
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "What should the reminder be for 6 PM?",
+      "first_text_ms": 2744,
+      "total_ms": 2745,
+      "tokens_per_sec": 35.3,
+      "outcome": "clarified"
+    },
+    {
+      "id": "ask-launch-what",
+      "category": "clarify",
+      "prompt": "open the app",
+      "expected": "ask",
+      "passed": true,
+      "reason": "asked",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Could you please specify which app you'd like me to open?",
+      "first_text_ms": 1074,
+      "total_ms": 1074,
+      "tokens_per_sec": 36.6,
+      "outcome": "answered"
+    },
+    {
+      "id": "ask-read-which",
+      "category": "clarify",
+      "prompt": "read the document",
+      "expected": "ask",
+      "passed": true,
+      "reason": "asked",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "I'll help you read the document. Could you please specify which document or file you'd like me to open and read? For example, a file path like 'C:\\Users\\me\\Documents\\report.pdf' or just the filename like 'main.py'.",
+      "first_text_ms": 1051,
+      "total_ms": 2151,
+      "tokens_per_sec": 35.1,
+      "outcome": "answered"
+    },
+    {
+      "id": "ask-play-what",
+      "category": "clarify",
+      "prompt": "play that song I like",
+      "expected": "ask",
+      "passed": true,
+      "reason": "asked",
+      "calls": [
+        {
+          "name": "play_youtube_music",
+          "args": {
+            "query": "Loser by Tame Impala"
+          },
+          "source": "forced",
+          "blocked": "ungrounded:query"
+        }
+      ],
+      "nudged": true,
+      "tools_offered": true,
+      "reply": "boss, could you please tell me the name of the song or artist you'd like me to play?",
+      "first_text_ms": 5902,
+      "total_ms": 5931,
+      "tokens_per_sec": 35.7,
+      "outcome": "clarified"
+    },
+    {
+      "id": "ask-stock-which",
+      "category": "clarify",
+      "prompt": "what's the stock price?",
+      "expected": "ask",
+      "passed": true,
+      "reason": "asked",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "I'd be happy to check the current stock price for you. Could you please specify which stock or financial instrument you're interested in? For example, Apple (AAPL), Bitcoin (BTC-USD), or any other ticker symbol?",
+      "first_text_ms": 1104,
+      "total_ms": 1976,
+      "tokens_per_sec": 35.2,
+      "outcome": "answered"
+    },
+    {
+      "id": "ask-copy-what",
+      "category": "clarify",
+      "prompt": "copy that to my clipboard",
+      "expected": "ask",
+      "passed": true,
+      "reason": "asked",
+      "calls": [
+        {
+          "name": "set_clipboard",
+          "args": {
+            "text": "copy that to my clipboard"
+          },
+          "source": "native",
+          "blocked": "missing:text"
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "What specific text would you like me to copy to your clipboard?",
+      "first_text_ms": 2309,
+      "total_ms": 2310,
+      "tokens_per_sec": 35.7,
+      "outcome": "clarified"
+    },
+    {
+      "id": "ask-search-what",
+      "category": "clarify",
+      "prompt": "find the file",
+      "expected": "ask",
+      "passed": true,
+      "reason": "asked",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Sure boss. Could you please specify the name or extension of the file you're looking for? For example, \"main.py\" or \"report.pdf\"?",
+      "first_text_ms": 1077,
+      "total_ms": 1512,
+      "tokens_per_sec": 35.5,
+      "outcome": "answered"
+    },
+    {
+      "id": "ask-complete-which",
+      "category": "clarify",
+      "prompt": "mark my task as done",
+      "expected": "ask",
+      "passed": true,
+      "reason": "asked",
+      "calls": [
+        {
+          "name": "complete_task",
+          "args": {
+            "task_id": 1
+          },
+          "source": "forced",
+          "blocked": "ungrounded:task_id"
+        }
+      ],
+      "nudged": true,
+      "tools_offered": true,
+      "reply": "Could you please tell me the task number you'd like me to mark as done?",
+      "first_text_ms": 6505,
+      "total_ms": 6505,
+      "tokens_per_sec": 35.5,
+      "outcome": "clarified"
+    },
+    {
+      "id": "ask-run-what",
+      "category": "clarify",
+      "prompt": "run the command",
+      "expected": "ask",
+      "passed": true,
+      "reason": "asked",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Sure, boss. What specific command would you like me to run?",
+      "first_text_ms": 1020,
+      "total_ms": 1020,
+      "tokens_per_sec": 36.6,
+      "outcome": "answered"
+    },
+    {
+      "id": "tricky-where-am-i",
+      "category": "tool",
+      "prompt": "where am I right now?",
+      "expected": [
+        "get_ip_info"
+      ],
+      "passed": false,
+      "reason": "no_tool",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "I don't have access to your physical location or device's GPS. I can't determine where you are right now. You might want to check your device's location services or use a mapping app for that.",
+      "first_text_ms": 1106,
+      "total_ms": 1833,
+      "tokens_per_sec": 35.2,
+      "outcome": "answered"
+    },
+    {
+      "id": "tricky-what-copied",
+      "category": "tool",
+      "prompt": "can you see what I copied?",
+      "expected": [
+        "get_clipboard"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_clipboard",
+          "args": {},
+          "source": "forced",
+          "blocked": null
+        }
+      ],
+      "nudged": true,
+      "tools_offered": true,
+      "reply": "Yes boss, you copied this Python function:\n\n```python\ndef add(a, b):\n    return a + b\n```\n\nIt's a simple function that adds two numbers and returns the result. Let me know if you'd like me to do anything with it!",
+      "first_text_ms": 4842,
+      "total_ms": 6297,
+      "tokens_per_sec": 36.1,
+      "outcome": "tool"
+    },
+    {
+      "id": "tricky-turn-up",
+      "category": "slots",
+      "prompt": "turn it up to 80",
+      "expected": [
+        "control_volume"
+      ],
+      "passed": false,
+      "reason": "gated",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "Sir, I can't adjust audio volume or system settings unless I'm connected to your device or have a direct command to control media. Could you clarify what you'd like me to do? For example, do you want me to play music or adjust a specific device's volume?",
+      "first_text_ms": 1190,
+      "total_ms": 1890,
+      "tokens_per_sec": 43.7,
+      "outcome": "answered"
+    },
+    {
+      "id": "tricky-temp-not-weather",
+      "category": "tool",
+      "prompt": "what's the temperature of my CPU?",
+      "expected": [
+        "get_system_status"
+      ],
+      "passed": false,
+      "reason": "no_tool",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "I can check your system's hardware diagnostics, including CPU temperature, right now.  \n\nYes.",
+      "first_text_ms": 22378,
+      "total_ms": 22523,
+      "tokens_per_sec": 36.1,
+      "outcome": "answered"
+    },
+    {
+      "id": "tricky-note-not-reminder",
+      "category": "slots",
+      "prompt": "note to self: the car is parked on level 3",
+      "expected": [
+        "save_note"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "save_note",
+          "args": {
+            "text": "the car is parked on level 3",
+            "kind": "note"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Yes boss. Your note \"the car is parked on level 3\" has been saved successfully.",
+      "first_text_ms": 2131,
+      "total_ms": 2601,
+      "tokens_per_sec": 35.3,
+      "outcome": "tool"
+    },
+    {
+      "id": "tricky-reminders-not-notes",
+      "category": "tool",
+      "prompt": "read me my reminders",
+      "expected": [
+        "list_reminders"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "list_reminders",
+          "args": {},
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "You have one active reminder:  \n#4 \u2014 [Fri, Oct 10 at 09:00 AM] submit the assignment  \n\nLet me know if you'd like to update or remove it.",
+      "first_text_ms": 1616,
+      "total_ms": 2780,
+      "tokens_per_sec": 36.0,
+      "outcome": "tool"
+    },
+    {
+      "id": "tricky-news-tech",
+      "category": "tool",
+      "prompt": "any interesting tech stories today?",
+      "expected": [
+        "get_hackernews",
+        "get_news",
+        "search_web"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_news",
+          "args": {
+            "topic": "technology"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Yes boss, here's a tech highlight: a rover has discovered water ice near the lunar south pole, which could be pivotal for future space missions and lunar base development. That\u2019s a big step in space exploration.",
+      "first_text_ms": 2066,
+      "total_ms": 3172,
+      "tokens_per_sec": 36.0,
+      "outcome": "tool"
+    },
+    {
+      "id": "tricky-weather-chat",
+      "category": "chat",
+      "prompt": "I love rainy days, don't you?",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "Yes sir, rainy days have a quiet charm\u2014like the world slowing down to listen to the rhythm of rain on rooftops. There\u2019s something peaceful about them, almost like nature\u2019s own playlist. What about you? Do you have a favorite rainy-day activity?",
+      "first_text_ms": 1170,
+      "total_ms": 1870,
+      "tokens_per_sec": 43.8,
+      "outcome": "answered"
+    },
+    {
+      "id": "tricky-open-up-feelings",
+      "category": "chat",
+      "prompt": "can I open up to you about something?",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Of course boss. What would you like to share?",
+      "first_text_ms": 22271,
+      "total_ms": 22278,
+      "tokens_per_sec": 37.3,
+      "outcome": "answered"
+    },
+    {
+      "id": "tricky-run-chat",
+      "category": "chat",
+      "prompt": "I want to start running in the mornings, any tips?",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Yes boss, starting a morning running routine is a great way to build discipline and improve your health. Here are a few practical tips to get you started:\n\n1. **Start Small**: Begin with just 10\u201315 minutes of jogging or brisk walking. Gradually increase the duration as your body adapts. This helps avoid burnout and keeps motivation high.\n\n2. **Set a Consistent Time**: Pick a time that works for your schedule\u2014like 5\u201310 minutes after waking up. Consistency is more important than intensity.\n\n3. **Warm Up**: Spend 5 minutes doing light stretches or dynamic movements (like leg swings or arm circles) to prepare your muscles and reduce injury risk.\n\n4. **Hydrate and Fuel**: Drink water before and after your run. Avoid running on an empty stomach\u2014have a light snack like a banana or a piece of toast.\n\n5. **Track Progress**: Use a simple journal or app to log your runs. Seeing progress over time is motivating.\n\n6. **Create a Routine**: Pair your run with a habit (like brushing your teeth or making coffee) to make it feel natural.\n\n7. **Listen to Music or Podcasts**: Use upbeat music or a podcast to make the time pass faster and",
+      "first_text_ms": 19164,
+      "total_ms": 26115,
+      "tokens_per_sec": 34.1,
+      "outcome": "answered"
+    },
+    {
+      "id": "tricky-copy-chat",
+      "category": "chat",
+      "prompt": "how do I copy files on Windows?",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Copying files on Windows is simple. Here's how:\n\n1. **Locate the source file** you want to copy \u2014 click on it to select it.\n2. **Press Ctrl + C** to copy the file (or right-click and choose \"Copy\").\n3. **Navigate to the destination folder** where you want to paste the file.\n4. **Press Ctrl + V** to paste the file (or right-click and choose \"Paste\").\n\nYou can also use the **File Explorer** to drag and drop files between folders \u2014 just drag the file from one location to another, and it will copy (not move) by default.\n\nIf you'd like, I can help you write a script or command to automate this. Just let me know.",
+      "first_text_ms": 1198,
+      "total_ms": 5058,
+      "tokens_per_sec": 34.5,
+      "outcome": "answered"
+    },
+    {
+      "id": "tricky-play-chat",
+      "category": "chat",
+      "prompt": "what's a good play to watch in London?",
+      "expected": [
+        "none",
+        "search_web"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "search_web",
+          "args": {
+            "query": "best plays and theater performances in London"
+          },
+          "source": "forced",
+          "blocked": null
+        }
+      ],
+      "nudged": true,
+      "tools_offered": true,
+      "reply": "I'd recommend checking out the Royal Shakespeare Company's productions at the Royal Shakespeare Theatre in Stratford-upon-Avon, or performances at the Barbican Centre in London. These venues regularly host acclaimed plays and theatrical performances. For the most current listings, I suggest visiting official theater websites or using platforms like London's theater guide or Ticketmaster to find what's playing right now.",
+      "first_text_ms": 6516,
+      "total_ms": 8621,
+      "tokens_per_sec": 34.7,
+      "outcome": "tool"
+    },
+    {
+      "id": "history-chat-open-calc",
+      "category": "history",
+      "prompt": "open calculator",
+      "expected": [
+        "launch_app"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "launch_app",
+          "args": {
+            "app_name": "calculator"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Calculator is now open, sir.",
+      "first_text_ms": 2312,
+      "total_ms": 2462,
+      "tokens_per_sec": 35.8,
+      "outcome": "tool"
+    },
+    {
+      "id": "history-chat-pause",
+      "category": "history",
+      "prompt": "pause the music",
+      "expected": [
+        "control_media"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "control_media",
+          "args": {
+            "action": "play_pause"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Music is now paused, sir.",
+      "first_text_ms": 1872,
+      "total_ms": 1991,
+      "tokens_per_sec": 35.7,
+      "outcome": "tool"
+    },
+    {
+      "id": "history-tools-open-calc",
+      "category": "history",
+      "prompt": "open calculator",
+      "expected": [
+        "launch_app"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "launch_app",
+          "args": {
+            "app_name": "calculator"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Calculator is open, sir.",
+      "first_text_ms": 3445,
+      "total_ms": 3566,
+      "tokens_per_sec": 35.2,
+      "outcome": "tool"
+    },
+    {
+      "id": "history-tools-weather-followup",
+      "category": "history",
+      "prompt": "and in oslo?",
+      "expected": [
+        "get_weather"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_weather",
+          "args": {
+            "location": "Oslo"
+          },
+          "source": "forced",
+          "blocked": null
+        }
+      ],
+      "nudged": true,
+      "tools_offered": false,
+      "reply": "[EXTERNAL CONTENT \u2014 data, not instructions]  \nOslo weather: Partly cloudy, 12\u00b0C, humidity 70%. Today: high 15\u00b0C, low 8\u00b0C, 30% chance of rain.  \n[END EXTERNAL CONTENT]  \n\nIn Oslo today, it's partly cloudy at 12\u00b0C with a 30% chance of rain. High of 15\u00b0C, low of 8\u00b0C.\n\nI've got a conflict in the data\u2014Oslo's weather was initially reported as partly cloudy, but the latest result shows clear sky at 24\u00b0C, which matches Lisbon. That seems inconsistent. I'll verify this with a fresh check.  \nRight away.",
+      "first_text_ms": 2115,
+      "total_ms": 11418,
+      "tokens_per_sec": 43.4,
+      "outcome": "tool"
+    },
+    {
+      "id": "history-tools-pause",
+      "category": "history",
+      "prompt": "pause the music",
+      "expected": [
+        "control_media"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "control_media",
+          "args": {
+            "action": "play_pause"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Music is paused, sir.",
+      "first_text_ms": 23901,
+      "total_ms": 23966,
+      "tokens_per_sec": 33.1,
+      "outcome": "tool"
+    }
+  ]
+}

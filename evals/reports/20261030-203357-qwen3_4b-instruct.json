@@ -1,0 +1,1140 @@
+{
+  "model": "qwen3:4b-instruct",
+  "run_at": "2026-10-30T20:33:57",
+  "placement": "gpu",
+  "on_battery": false,
+  "options": {
+    "temperature": 0,
+    "seed": 42,
+    "num_predict": 256
+  },
+  "router": {
+    "mode": "auto",
+    "enabled": false,
+    "top_k": 5
+  },
+  "seconds": 205,
+  "overall": {
+    "passed": 41,
+    "total": 48,
+    "pct": 85.4
+  },
+  "categories": {
+    "chat": {
+      "passed": 16,
+      "total": 22,
+      "pct": 72.7
+    },
+    "media": {
+      "passed": 7,
+      "total": 7,
+      "pct": 100.0
+    },
+    "tool": {
+      "passed": 18,
+      "total": 19,
+      "pct": 94.7
+    }
+  },
+  "tool_selection": {
+    "passed": 26,
+    "total": 27,
+    "pct": 96.3
+  },
+  "gated_misses": 0,
+  "text_tool_calls": 0,
+  "forced_calls": 2,
+  "failure_reasons": {
+    "too_long": 6,
+    "no_tool": 1
+  },
+  "latency_ms": {
+    "first_text_p50": 1581,
+    "first_text_p90": 2375,
+    "total_p50": 2359,
+    "total_p90": 7117
+  },
+  "tokens_per_sec_mean": 38.3,
+  "chat_replies": {
+    "words_p50": 27,
+    "words_max": 200,
+    "formatted": 1,
+    "total": 22
+  },
+  "results": [
+    {
+      "id": "status-gpu",
+      "category": "tool",
+      "prompt": "How hot is my GPU running right now?",
+      "expected": [
+        "get_system_status"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_system_status",
+          "args": {},
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Your GPU is running at 52\u00b0C, which is within safe limits. It's utilizing 9% of its capacity, indicating light workload. System is stable and cooling is adequate.",
+      "first_text_ms": 23676,
+      "total_ms": 24697,
+      "tokens_per_sec": 36.9,
+      "outcome": "tool"
+    },
+    {
+      "id": "status-ram",
+      "category": "tool",
+      "prompt": "check my ram usage",
+      "expected": [
+        "get_system_status"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_system_status",
+          "args": {},
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "RAM is at 45%, using 7.1 GB of your 15.8 GB total. System is running smoothly.",
+      "first_text_ms": 2004,
+      "total_ms": 2618,
+      "tokens_per_sec": 36.7,
+      "outcome": "tool"
+    },
+    {
+      "id": "status-battery",
+      "category": "tool",
+      "prompt": "what's my battery at?",
+      "expected": [
+        "get_system_status"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_system_status",
+          "args": {},
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Battery is at 88%, and the device is currently plugged in.",
+      "first_text_ms": 1986,
+      "total_ms": 2250,
+      "tokens_per_sec": 36.7,
+      "outcome": "tool"
+    },
+    {
+      "id": "status-general",
+      "category": "tool",
+      "prompt": "run a quick diagnostic on the system",
+      "expected": [
+        "get_system_status"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_system_status",
+          "args": {},
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "System is running smoothly, boss. CPU and GPU are low, RAM is at 45%, and battery is at 88% with charging. No issues detected.",
+      "first_text_ms": 1867,
+      "total_ms": 2833,
+      "tokens_per_sec": 36.7,
+      "outcome": "tool"
+    },
+    {
+      "id": "reminder-list",
+      "category": "tool",
+      "prompt": "what reminders do I have?",
+      "expected": [
+        "list_reminders"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "list_reminders",
+          "args": {},
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "You have one active reminder: submit the assignment at Fri, Oct 10 at 09:00 AM.",
+      "first_text_ms": 1578,
+      "total_ms": 2212,
+      "tokens_per_sec": 36.8,
+      "outcome": "tool"
+    },
+    {
+      "id": "reminder-list-2",
+      "category": "tool",
+      "prompt": "show me my upcoming reminders",
+      "expected": [
+        "list_reminders"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "list_reminders",
+          "args": {},
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "You have one active reminder: submit the assignment at 9:00 AM on Friday, October 10, 2026.",
+      "first_text_ms": 1581,
+      "total_ms": 2359,
+      "tokens_per_sec": 36.6,
+      "outcome": "tool"
+    },
+    {
+      "id": "task-list",
+      "category": "tool",
+      "prompt": "what's on my to-do list?",
+      "expected": [
+        "list_notes"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "list_notes",
+          "args": {
+            "kind": "task"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Your to-do list includes:  \nTask #3: renew passport  \nNote #2: wifi password is on the router sticker",
+      "first_text_ms": 1636,
+      "total_ms": 2242,
+      "tokens_per_sec": 36.4,
+      "outcome": "tool"
+    },
+    {
+      "id": "weather-here",
+      "category": "tool",
+      "prompt": "is it going to rain today?",
+      "expected": [
+        "get_weather"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_weather",
+          "args": {},
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "No rain today, boss. Clear sky with a 10% chance of precipitation. Temperature will peak at 27\u00b0C and drop to 19\u00b0C overnight.",
+      "first_text_ms": 2375,
+      "total_ms": 3281,
+      "tokens_per_sec": 35.5,
+      "outcome": "tool"
+    },
+    {
+      "id": "hn-top",
+      "category": "tool",
+      "prompt": "what's trending on hacker news?",
+      "expected": [
+        "get_hackernews"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_hackernews",
+          "args": {
+            "category": "top",
+            "limit": 5
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Right now on Hacker News, a post titled \"A tiny database in 500 lines\" is trending with 312 points. Another top story is about \"Why SQLite is everywhere\" with 288 points. Both highlight database technologies and their widespread use in software development.",
+      "first_text_ms": 2093,
+      "total_ms": 3744,
+      "tokens_per_sec": 35.7,
+      "outcome": "tool"
+    },
+    {
+      "id": "news-top",
+      "category": "tool",
+      "prompt": "what's in the news today?",
+      "expected": [
+        "get_news"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_news",
+          "args": {
+            "topic": "top"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Rover has discovered water ice near the lunar south pole. A central bank has also decided to keep interest rates unchanged.",
+      "first_text_ms": 1987,
+      "total_ms": 2605,
+      "tokens_per_sec": 36.3,
+      "outcome": "tool"
+    },
+    {
+      "id": "football-chat",
+      "category": "chat",
+      "prompt": "I love watching football with my friends on weekends",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Yes boss, I'll help you find the latest football scores and schedules for your weekend games. Just let me know which teams or leagues you're interested in.",
+      "first_text_ms": 1263,
+      "total_ms": 1668,
+      "tokens_per_sec": 35.8,
+      "outcome": "answered"
+    },
+    {
+      "id": "ip-mine",
+      "category": "tool",
+      "prompt": "what's my public IP address?",
+      "expected": [
+        "get_ip_info"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_ip_info",
+          "args": {
+            "ip_address": ""
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Your public IP address is 203.0.113.7, located in Pune, Maharashtra, India. It's assigned by Example Broadband.",
+      "first_text_ms": 1713,
+      "total_ms": 2616,
+      "tokens_per_sec": 36.2,
+      "outcome": "tool"
+    },
+    {
+      "id": "wolfram-distance",
+      "category": "tool",
+      "prompt": "how far is the moon from earth?",
+      "expected": [
+        "query_wolfram_alpha",
+        "search_web"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "query_wolfram_alpha",
+          "args": {
+            "query": "average distance from Earth to Moon"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "The average distance from Earth to the Moon is about 1702,519 kilometers.",
+      "first_text_ms": 1870,
+      "total_ms": 2422,
+      "tokens_per_sec": 35.9,
+      "outcome": "tool"
+    },
+    {
+      "id": "clip-read",
+      "category": "tool",
+      "prompt": "what's on my clipboard?",
+      "expected": [
+        "get_clipboard"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_clipboard",
+          "args": {},
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Your clipboard contains a simple Python function: `def add(a, b): return a + b`.",
+      "first_text_ms": 1613,
+      "total_ms": 2134,
+      "tokens_per_sec": 32.8,
+      "outcome": "tool"
+    },
+    {
+      "id": "clip-review",
+      "category": "tool",
+      "prompt": "review the code I just copied",
+      "expected": [
+        "get_clipboard"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_clipboard",
+          "args": {},
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "I see the code you copied. It's a simple function named `add` that takes two parameters, `a` and `b`, and returns their sum. This is a basic arithmetic function in Python. Let me know if you'd like me to analyze it further or help with anything specific about it.",
+      "first_text_ms": 2221,
+      "total_ms": 3919,
+      "tokens_per_sec": 35.6,
+      "outcome": "tool"
+    },
+    {
+      "id": "media-play-song",
+      "category": "media",
+      "prompt": "play Loser by Tame Impala",
+      "expected": [
+        "play_youtube_music"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "play_youtube_music",
+          "args": {
+            "query": "Loser by Tame Impala"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Yes boss, \"Loser\" by Tame Impala is now playing on YouTube Music.",
+      "first_text_ms": 1921,
+      "total_ms": 2300,
+      "tokens_per_sec": 35.6,
+      "outcome": "tool"
+    },
+    {
+      "id": "media-play-artist",
+      "category": "media",
+      "prompt": "put on some Arctic Monkeys",
+      "expected": [
+        "play_youtube_music"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "play_youtube_music",
+          "args": {
+            "query": "Arctic Monkeys"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Yes boss, Arctic Monkeys are now playing.",
+      "first_text_ms": 1746,
+      "total_ms": 1920,
+      "tokens_per_sec": 35.9,
+      "outcome": "tool"
+    },
+    {
+      "id": "media-play-yt",
+      "category": "media",
+      "prompt": "play Starboy on youtube music",
+      "expected": [
+        "play_youtube_music"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "play_youtube_music",
+          "args": {
+            "query": "Starboy"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Yes boss, \"Starboy\" is now playing on YouTube Music.",
+      "first_text_ms": 1720,
+      "total_ms": 1980,
+      "tokens_per_sec": 35.9,
+      "outcome": "tool"
+    },
+    {
+      "id": "media-pause",
+      "category": "media",
+      "prompt": "pause the music",
+      "expected": [
+        "control_media"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "control_media",
+          "args": {
+            "action": "play_pause"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Music paused, boss.",
+      "first_text_ms": 1672,
+      "total_ms": 1730,
+      "tokens_per_sec": 32.6,
+      "outcome": "tool"
+    },
+    {
+      "id": "media-next",
+      "category": "media",
+      "prompt": "skip to the next track",
+      "expected": [
+        "control_media"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "control_media",
+          "args": {
+            "action": "next"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Next track loaded, boss.",
+      "first_text_ms": 1546,
+      "total_ms": 1662,
+      "tokens_per_sec": 36.1,
+      "outcome": "tool"
+    },
+    {
+      "id": "media-resume",
+      "category": "media",
+      "prompt": "resume playback",
+      "expected": [
+        "control_media"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "control_media",
+          "args": {
+            "action": "play_pause"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Playback resumed, boss.",
+      "first_text_ms": 1567,
+      "total_ms": 1656,
+      "tokens_per_sec": 36.1,
+      "outcome": "tool"
+    },
+    {
+      "id": "media-search",
+      "category": "media",
+      "prompt": "search youtube music for lo-fi study playlists",
+      "expected": [
+        "search_youtube_music"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "search_youtube_music",
+          "args": {
+            "query": "lo-fi study playlists",
+            "search_filter": "playlists"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Lofi Girl has a popular playlist called \"beats to study to,\" perfect for focused study sessions.",
+      "first_text_ms": 2172,
+      "total_ms": 2641,
+      "tokens_per_sec": 35.4,
+      "outcome": "tool"
+    },
+    {
+      "id": "chat-hi",
+      "category": "chat",
+      "prompt": "hi",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "Yes boss. How can I assist you today?",
+      "first_text_ms": 864,
+      "total_ms": 864,
+      "tokens_per_sec": 46.6,
+      "outcome": "answered"
+    },
+    {
+      "id": "chat-thanks",
+      "category": "chat",
+      "prompt": "thanks, that's all for now",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "You're welcome sir. Have a great day.",
+      "first_text_ms": 651,
+      "total_ms": 652,
+      "tokens_per_sec": 47.0,
+      "outcome": "answered"
+    },
+    {
+      "id": "chat-thanks-short",
+      "category": "chat",
+      "prompt": "say thanks in one short sentence",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "Yes boss, thank you.",
+      "first_text_ms": 560,
+      "total_ms": 560,
+      "tokens_per_sec": 49.3,
+      "outcome": "answered"
+    },
+    {
+      "id": "chat-explain",
+      "category": "chat",
+      "prompt": "explain what a hash map is in two sentences",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "Yes boss, a hash map is a data structure that stores key-value pairs, allowing for fast lookups by using a hash function to map keys to specific memory locations. It's like a dictionary where you find a value by its unique key, making searches nearly instant.",
+      "first_text_ms": 1281,
+      "total_ms": 1768,
+      "tokens_per_sec": 43.8,
+      "outcome": "answered"
+    },
+    {
+      "id": "chat-joke",
+      "category": "chat",
+      "prompt": "tell me a joke",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "Sure boss. Why did the coffee file a police report?  \n\nIt got mugged.",
+      "first_text_ms": 832,
+      "total_ms": 833,
+      "tokens_per_sec": 45.5,
+      "outcome": "answered"
+    },
+    {
+      "id": "chat-time",
+      "category": "chat",
+      "prompt": "what time is it?",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "It's 8:31 PM, boss.",
+      "first_text_ms": 670,
+      "total_ms": 671,
+      "tokens_per_sec": 46.7,
+      "outcome": "answered"
+    },
+    {
+      "id": "chat-date",
+      "category": "chat",
+      "prompt": "what's today's date?",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "Today's date is Friday, October 30, 2026.",
+      "first_text_ms": 799,
+      "total_ms": 799,
+      "tokens_per_sec": 46.8,
+      "outcome": "answered"
+    },
+    {
+      "id": "chat-advice",
+      "category": "chat",
+      "prompt": "how should I structure a cover letter?",
+      "expected": [
+        "none"
+      ],
+      "passed": false,
+      "reason": "too_long:93",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "Yes boss, a strong cover letter should start with a clear subject line and your contact info. Begin with a polite opening that addresses the hiring manager by name if possible. Then, state the position you're applying for and briefly explain why you're excited about it. Next, highlight 1\u20132 key achievements or skills that match the job. Keep it concise\u2014three to four paragraphs max. End with a confident closing and a call to action, like \"I look forward to discussing how I can contribute.\" Always tailor it to the specific role and company.",
+      "first_text_ms": 835,
+      "total_ms": 3022,
+      "tokens_per_sec": 43.4,
+      "outcome": "answered"
+    },
+    {
+      "id": "chat-concept-weather",
+      "category": "chat",
+      "prompt": "why is the sky blue?",
+      "expected": [
+        "none"
+      ],
+      "passed": false,
+      "reason": "too_long:61",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "Yes boss, the sky appears blue because sunlight interacts with molecules and small particles in the atmosphere. Sunlight is made of different colors, each with its own wavelength. Blue light waves are shorter and scatter more than other colors when they hit the atmosphere. This scattering happens in all directions, making the sky look blue from most viewpoints during the day.",
+      "first_text_ms": 834,
+      "total_ms": 2022,
+      "tokens_per_sec": 43.6,
+      "outcome": "answered"
+    },
+    {
+      "id": "chat-concept-files",
+      "category": "chat",
+      "prompt": "what's the difference between a file and a folder?",
+      "expected": [
+        "none"
+      ],
+      "passed": false,
+      "reason": "too_long:59",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "A file is a single document or piece of data, like a text file, image, or spreadsheet. A folder is a container that organizes and stores multiple files and other folders, making it easier to manage and find what you need. Think of a folder as a folder in a real-life filing cabinet, and files as the papers inside.",
+      "first_text_ms": 23186,
+      "total_ms": 24612,
+      "tokens_per_sec": 34.8,
+      "outcome": "answered"
+    },
+    {
+      "id": "chat-concept-music",
+      "category": "chat",
+      "prompt": "what makes a song catchy?",
+      "expected": [
+        "none"
+      ],
+      "passed": false,
+      "reason": "too_long:63",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "A song is catchy when it combines memorable melodies, repetitive and simple rhythms, and strong hooks\u2014like a chorus or a distinctive phrase\u2014that stick in your mind. Emotional resonance, clear lyrics, and a unique vibe also play big roles. Often, catchy songs use familiar patterns from music history, like the \"hook\" structure or a strong beat, to create a sense of comfort and immediacy.",
+      "first_text_ms": 1516,
+      "total_ms": 2907,
+      "tokens_per_sec": 34.9,
+      "outcome": "answered"
+    },
+    {
+      "id": "chat-concept-stocks",
+      "category": "chat",
+      "prompt": "in simple terms, what is a stock?",
+      "expected": [
+        "none"
+      ],
+      "passed": false,
+      "reason": "too_long:72",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "A stock is a piece of ownership in a company. If you buy a stock, you own a small part of that company, like owning a share of a big business. Companies sell stocks to raise money, and when people buy stocks, they're investing in the company's future. The price of a stock can go up or down based on how well the company is doing and what people think about it.",
+      "first_text_ms": 1194,
+      "total_ms": 2996,
+      "tokens_per_sec": 34.8,
+      "outcome": "answered"
+    },
+    {
+      "id": "chat-detail-asked",
+      "category": "chat",
+      "prompt": "explain in detail how a stock exchange works",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "A stock exchange is a marketplace where buyers and sellers trade financial instruments like stocks, bonds, and derivatives. It operates through a structured system of rules, technology, and oversight to ensure fair, transparent, and efficient transactions. Here\u2019s how it works in detail:\n\n1. **Listing of Securities**: Companies that want to raise capital issue shares and apply to be listed on a stock exchange (like the NYSE or NASDAQ). Once approved, their shares are added to the exchange\u2019s official list.\n\n2. **Order Matching**: When an investor wants to buy or sell shares, they place an order through a brokerage. These orders are sent to the exchange\u2019s electronic system. The system matches buy orders (to purchase shares) with sell orders (to sell shares) based on price and time.\n\n3. **Price Determination**: The exchange uses a \"market price\" determined by supply and demand. If many people want to buy a stock, its price rises. If many want to sell, the price falls. The system ensures prices are updated in real time.\n\n4. **Execution**: Once a match is found, the trade is executed instantly. The buyer receives shares, and the seller receives payment. This happens in microseconds, thanks to high-speed trading systems.\n\n5. **Clear",
+      "first_text_ms": 1192,
+      "total_ms": 8116,
+      "tokens_per_sec": 34.1,
+      "outcome": "answered"
+    },
+    {
+      "id": "chat-summary",
+      "category": "chat",
+      "prompt": "summarize that in one line",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "Plants convert sunlight, water, and carbon dioxide into energy and oxygen through photosynthesis.",
+      "first_text_ms": 1214,
+      "total_ms": 1239,
+      "tokens_per_sec": 44.9,
+      "outcome": "answered"
+    },
+    {
+      "id": "chat-name",
+      "category": "chat",
+      "prompt": "who are you?",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "I'm G.I.D.E.O.N \u2014 your guided intelligence that does everything you need. I'm here to assist, act, and respond with precision, like JARVIS, but tailored to your commands and goals. Yes.",
+      "first_text_ms": 896,
+      "total_ms": 1525,
+      "tokens_per_sec": 43.8,
+      "outcome": "answered"
+    },
+    {
+      "id": "chat-feelings",
+      "category": "chat",
+      "prompt": "I'm feeling a bit stressed today",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "Yes boss, I'm here for you. Would you like to talk through what's on your mind or need a quick distraction to help ease the tension?",
+      "first_text_ms": 881,
+      "total_ms": 1136,
+      "tokens_per_sec": 44.5,
+      "outcome": "answered"
+    },
+    {
+      "id": "tricky-where-am-i",
+      "category": "tool",
+      "prompt": "where am I right now?",
+      "expected": [
+        "get_ip_info"
+      ],
+      "passed": false,
+      "reason": "no_tool",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "I don't have access to your physical location or device's geolocation. I can't determine where you are right now.",
+      "first_text_ms": 23083,
+      "total_ms": 23287,
+      "tokens_per_sec": 35.8,
+      "outcome": "answered"
+    },
+    {
+      "id": "tricky-what-copied",
+      "category": "tool",
+      "prompt": "can you see what I copied?",
+      "expected": [
+        "get_clipboard"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_clipboard",
+          "args": {},
+          "source": "forced",
+          "blocked": null
+        }
+      ],
+      "nudged": true,
+      "tools_offered": true,
+      "reply": "You copied a Python function that adds two numbers together. It defines a simple function named `add` that returns the sum of its two inputs.",
+      "first_text_ms": 4788,
+      "total_ms": 5546,
+      "tokens_per_sec": 36.1,
+      "outcome": "tool"
+    },
+    {
+      "id": "tricky-temp-not-weather",
+      "category": "tool",
+      "prompt": "what's the temperature of my CPU?",
+      "expected": [
+        "get_system_status"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_system_status",
+          "args": {
+            "tool": "get_system_status",
+            "arguments": {}
+          },
+          "source": "forced",
+          "blocked": null
+        }
+      ],
+      "nudged": true,
+      "tools_offered": true,
+      "reply": "I can check your system's hardware diagnostics, including CPU temperature, right now. Let me retrieve that information for you.\n\nYour CPU temperature is not being monitored directly, but the GPU is running at 52\u00b0C. The CPU utilization is currently at 18%, which is low and indicates it's not under heavy load. Your system is running efficiently with 7.1 GB of RAM used out of 15.8 GB.",
+      "first_text_ms": 1051,
+      "total_ms": 7117,
+      "tokens_per_sec": 35.8,
+      "outcome": "tool"
+    },
+    {
+      "id": "tricky-reminders-not-notes",
+      "category": "tool",
+      "prompt": "read me my reminders",
+      "expected": [
+        "list_reminders"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "list_reminders",
+          "args": {},
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Boss, you have one active reminder: submit the assignment at 9:00 AM on Friday, October 10.",
+      "first_text_ms": 1634,
+      "total_ms": 2272,
+      "tokens_per_sec": 36.0,
+      "outcome": "tool"
+    },
+    {
+      "id": "tricky-news-tech",
+      "category": "tool",
+      "prompt": "any interesting tech stories today?",
+      "expected": [
+        "get_hackernews",
+        "get_news",
+        "search_web"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_news",
+          "args": {
+            "topic": "technology"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "A rover has discovered water ice near the lunar south pole, a major breakthrough for future lunar missions. Meanwhile, a central bank kept interest rates unchanged, signaling stable economic conditions.",
+      "first_text_ms": 2007,
+      "total_ms": 2955,
+      "tokens_per_sec": 36.1,
+      "outcome": "tool"
+    },
+    {
+      "id": "tricky-weather-chat",
+      "category": "chat",
+      "prompt": "I love rainy days, don't you?",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "Yes boss, there's something uniquely peaceful about the way rain taps on windows and softens the world. It's like nature's own soundtrack.",
+      "first_text_ms": 1121,
+      "total_ms": 1329,
+      "tokens_per_sec": 44.1,
+      "outcome": "answered"
+    },
+    {
+      "id": "tricky-open-up-feelings",
+      "category": "chat",
+      "prompt": "can I open up to you about something?",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Yes boss. What would you like to discuss?",
+      "first_text_ms": 22854,
+      "total_ms": 22854,
+      "tokens_per_sec": 37.4,
+      "outcome": "answered"
+    },
+    {
+      "id": "tricky-run-chat",
+      "category": "chat",
+      "prompt": "I want to start running in the mornings, any tips?",
+      "expected": [
+        "none"
+      ],
+      "passed": false,
+      "reason": "too_long:83",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Yes boss, starting a morning running routine is a great goal. Begin with short, consistent sessions\u2014like 10 to 15 minutes\u2014so you can build endurance without overwhelming yourself. Wear proper running shoes and dress in layers to adjust to changing weather. Hydrate before and after, and warm up with light stretches to prevent injury. Start with a comfortable pace, focusing on form over speed. Track your progress with a simple journal or app to stay motivated. And remember: consistency beats intensity. You\u2019ve got this.",
+      "first_text_ms": 1237,
+      "total_ms": 3861,
+      "tokens_per_sec": 34.6,
+      "outcome": "answered"
+    },
+    {
+      "id": "tricky-copy-chat",
+      "category": "chat",
+      "prompt": "how do I copy files on Windows?",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Copying files on Windows is simple. Right-click a file or folder, select \"Copy\", then navigate to the destination folder and right-click to choose \"Paste\". Alternatively, you can use keyboard shortcuts: press Ctrl+C to copy, then Ctrl+V to paste. For bulk operations, use File Explorer's drag-and-drop feature. Let me know if you'd like help with a specific file transfer.",
+      "first_text_ms": 1116,
+      "total_ms": 2951,
+      "tokens_per_sec": 34.6,
+      "outcome": "answered"
+    },
+    {
+      "id": "tricky-play-chat",
+      "category": "chat",
+      "prompt": "what's a good play to watch in London?",
+      "expected": [
+        "none",
+        "search_web"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "I'd love to help you find a great play in London. While I can't provide real-time theater listings, I recommend checking out the Royal Shakespeare Company, the National Theatre, or the Barbican Centre\u2014these are all renowned venues with a wide range of productions. For the most current shows and schedules, I suggest visiting their official websites or using a trusted theater booking platform. Would you like me to help you find something specific, like a genre or type of performance?",
+      "first_text_ms": 1295,
+      "total_ms": 3515,
+      "tokens_per_sec": 34.6,
+      "outcome": "answered"
+    }
+  ]
+}
