@@ -32,6 +32,49 @@ not transfer to System 2; **ratios and causes will**.
 
 ## 2. Findings
 
+### F-24 · 2026-10-30 · Baseline on the restored runtime: 95.4%, after finding a regression I caused
+The first full eval on Ollama 0.35.1 scored **79.6%**: only 22 of 76 tool
+cases got a native first call (58 on 2026-10-27), 42 decisions had to be
+forced, and replies opening "Yes boss / Certainly" rose from 12 to 45.
+Several were invented and slipped past the detector ("your battery is at
+87%", "opening dumbpipe…", made-up Hacker News headlines).
+
+**Cause: my F-21 edit**, not the runtime. It replaced the live context's
+4-line addressing block with *"Address: boss or sir, once, at the start of
+the reply"*, and the model started replying instead of calling tools. A/B on
+the same runtime (tool + projects, 26 cases):
+
+| Live-context addressing | Score | Forced |
+| :--- | ---: | ---: |
+| "…once, at the start of the reply" (F-21) | 65% | — |
+| Old 4-line block | 88.5% | 3 |
+| **None** (RULE 7 in the cached system prompt + `brain/style.py`) | **88.5%** | **1** |
+
+The line is gone. That also saves ~70 tokens per turn. The miss: after F-21
+I ran only the unit tests. **Any change to text the model reads needs an eval
+run before it ships.**
+
+The detector also learnt the holes this run exposed: an action gerund after a
+command ("opening dumbpipe…"), a reading of the user's machine with a number
+and no tool ("your battery is at 87%"), and time-sensitive results presented
+as fetched ("here are the top trending stories…").
+
+**Baseline, `20261030-111552`** (108 cases, GPU, Ollama 0.35.1):
+
+| Metric | Result |
+| :--- | ---: |
+| **Overall** | **95.4% (103/108)** |
+| chat · clarify · history · media · projects | 100% each |
+| slots | 95.0% |
+| tool | 83.3% |
+| Forced decisions | 6 |
+| First text p50 / p90 | **1.8 s / 4.2 s** |
+| Whole turn p50 / p90 | 2.5 s / 5.9 s |
+| Generation | 37.7 tok/s |
+
+Remaining failures are the long-standing model limits: Wolfram (2), "where
+am I?", "turn it up" (gated), and "what's my CPU temperature?".
+
 ### F-23 · 2026-10-30 · "No its ok" → the same question again; "no meetings" without looking; a misspelled city → the wrong forecast
 A real quick-ask morning, read from its traces:
 
@@ -732,6 +775,7 @@ battery (PRD §8.7).
 | 2026-10-27 | One tool list per turn; the forced decision extends the cached prompt | F-20 |
 | 2026-10-27 | History replays tool calls (capped; outside content omitted; grounding from spoken text only) | F-20 |
 | 2026-10-27 | Keep flash attention + q8_0 KV cache (A/B: no speed cost, less VRAM) | F-20 |
+| 2026-10-30 | No addressing line in the live context; any change to text the model reads needs an eval run first | F-24 |
 | 2026-10-09 | Bigger-model evals on Groq (free, no card) / Kaggle; AWS credits as backup | Free plan blocks GPUs; user prefers no card |
 
 ---

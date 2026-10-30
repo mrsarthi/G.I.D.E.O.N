@@ -127,9 +127,12 @@ def build_live_context_block(
     projects = profile.get("ongoing_projects", "G.I.D.E.O.N AI Development")
     now = datetime.now().strftime("%A, %B %d, %Y at %I:%M %p")
 
+    # No addressing rule here (F-24): "Address: boss or sir, once, at the
+    # start of the reply" made the model start replying instead of calling a
+    # tool — native first calls fell from 58 to 22 of 76 tool cases. RULE 7
+    # in the cached system prompt sets the style; brain/style.py enforces it.
     block = f"""{LIVE_CONTEXT_HEADER}
 - User Name: {user_name}
-- Address: "boss" or "sir", once, at the start of the reply.
 - Ongoing Projects: {projects}
 - Current Local Time: {now}"""
 

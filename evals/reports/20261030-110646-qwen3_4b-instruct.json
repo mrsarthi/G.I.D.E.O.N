@@ -1,0 +1,702 @@
+{
+  "model": "qwen3:4b-instruct",
+  "run_at": "2026-10-30T11:06:46",
+  "placement": "gpu",
+  "on_battery": false,
+  "options": {
+    "temperature": 0,
+    "seed": 42,
+    "num_predict": 256
+  },
+  "router": {
+    "mode": "auto",
+    "enabled": false,
+    "top_k": 5
+  },
+  "seconds": 114,
+  "overall": {
+    "passed": 23,
+    "total": 26,
+    "pct": 88.5
+  },
+  "categories": {
+    "projects": {
+      "passed": 8,
+      "total": 8,
+      "pct": 100.0
+    },
+    "tool": {
+      "passed": 15,
+      "total": 18,
+      "pct": 83.3
+    }
+  },
+  "tool_selection": {
+    "passed": 21,
+    "total": 24,
+    "pct": 87.5
+  },
+  "gated_misses": 0,
+  "text_tool_calls": 0,
+  "forced_calls": 1,
+  "failure_reasons": {
+    "no_tool": 3
+  },
+  "latency_ms": {
+    "first_text_p50": 1763,
+    "first_text_p90": 3239,
+    "total_p50": 2776,
+    "total_p90": 4549
+  },
+  "tokens_per_sec_mean": 38.2,
+  "results": [
+    {
+      "id": "status-gpu",
+      "category": "tool",
+      "prompt": "How hot is my GPU running right now?",
+      "expected": [
+        "get_system_status"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_system_status",
+          "args": {},
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Your GPU is running at 52\u00b0C, which is within a safe range. It's utilizing only 9% of its capacity, indicating light workload. Everything looks stable.",
+      "first_text_ms": 20261,
+      "total_ms": 21180,
+      "tokens_per_sec": 38.6,
+      "outcome": "tool"
+    },
+    {
+      "id": "status-ram",
+      "category": "tool",
+      "prompt": "check my ram usage",
+      "expected": [
+        "get_system_status"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_system_status",
+          "args": {},
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "RAM is using 7.1 GB out of 15.8 GB, which is 45%. That's well within normal range\u2014no issues detected.",
+      "first_text_ms": 1940,
+      "total_ms": 2693,
+      "tokens_per_sec": 38.5,
+      "outcome": "tool"
+    },
+    {
+      "id": "status-battery",
+      "category": "tool",
+      "prompt": "what's my battery at?",
+      "expected": [
+        "get_system_status"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_system_status",
+          "args": {},
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Battery is at 88%, and the device is currently plugged in.",
+      "first_text_ms": 1907,
+      "total_ms": 2158,
+      "tokens_per_sec": 38.5,
+      "outcome": "tool"
+    },
+    {
+      "id": "status-general",
+      "category": "tool",
+      "prompt": "run a quick diagnostic on the system",
+      "expected": [
+        "get_system_status"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_system_status",
+          "args": {},
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "System diagnostics complete, boss.  \nCPU: 18% utilization \u2014 idle, stable.  \nGPU: 9% usage, operating at 52\u00b0C \u2014 normal, no overheating.  \nRAM: 7.1 GB used out of 15.8 GB (45%) \u2014 well within safe limits.  \nBattery: 88% charged, currently plugged in \u2014 no power issues.  \n\nAll systems running smoothly.",
+      "first_text_ms": 1763,
+      "total_ms": 4246,
+      "tokens_per_sec": 38.5,
+      "outcome": "tool"
+    },
+    {
+      "id": "reminder-list",
+      "category": "tool",
+      "prompt": "what reminders do I have?",
+      "expected": [
+        "list_reminders"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "list_reminders",
+          "args": {},
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "You have one active reminder:  \n#4 \u2014 [Fri, Oct 10 at 09:00 AM] submit the assignment.",
+      "first_text_ms": 1520,
+      "total_ms": 2273,
+      "tokens_per_sec": 38.8,
+      "outcome": "tool"
+    },
+    {
+      "id": "reminder-list-2",
+      "category": "tool",
+      "prompt": "show me my upcoming reminders",
+      "expected": [
+        "list_reminders"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "list_reminders",
+          "args": {},
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "You have one active reminder:  \n#4 \u2014 [Fri, Oct 10 at 09:00 AM] submit the assignment.",
+      "first_text_ms": 1525,
+      "total_ms": 2278,
+      "tokens_per_sec": 38.6,
+      "outcome": "tool"
+    },
+    {
+      "id": "task-list",
+      "category": "tool",
+      "prompt": "what's on my to-do list?",
+      "expected": [
+        "list_notes"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "list_notes",
+          "args": {
+            "kind": "task"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Here\u2019s what\u2019s on your to-do list:\n\n- Task #3: renew passport  \n- Note #2: wifi password is on the router sticker  \n\nLet me know if you'd like to update or mark anything as complete.",
+      "first_text_ms": 1596,
+      "total_ms": 2739,
+      "tokens_per_sec": 38.3,
+      "outcome": "tool"
+    },
+    {
+      "id": "window-new-vscode",
+      "category": "projects",
+      "prompt": "Can you open a new instance of vs code please",
+      "expected": [
+        "launch_app"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "launch_app",
+          "args": {
+            "app_name": "vs code",
+            "window": "new"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Got it, boss. Visual Studio Code is now open in a new window.",
+      "first_text_ms": 1895,
+      "total_ms": 2202,
+      "tokens_per_sec": 37.5,
+      "outcome": "tool"
+    },
+    {
+      "id": "project-in-vscode",
+      "category": "projects",
+      "prompt": "Can you open sendme in vs code please",
+      "expected": [
+        "launch_app"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "launch_app",
+          "args": {
+            "app_name": "vs code",
+            "target": "sendme"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Got it, boss. VS Code is now open and ready to work on the sendme project.",
+      "first_text_ms": 2850,
+      "total_ms": 3242,
+      "tokens_per_sec": 37.0,
+      "outcome": "tool"
+    },
+    {
+      "id": "project-new-window",
+      "category": "projects",
+      "prompt": "Open dumbpipe in a new vs code window",
+      "expected": [
+        "launch_app"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "launch_app",
+          "args": {
+            "app_name": "vs code",
+            "target": "dumbpipe",
+            "window": "new"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Got it, boss. VS Code has been opened with the dumbpipe project in a new window.",
+      "first_text_ms": 3239,
+      "total_ms": 3630,
+      "tokens_per_sec": 36.7,
+      "outcome": "tool"
+    },
+    {
+      "id": "project-this-window",
+      "category": "projects",
+      "prompt": "Open dumbpipe in this vs code window",
+      "expected": [
+        "launch_app"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "launch_app",
+          "args": {
+            "app_name": "vs code",
+            "target": "dumbpipe",
+            "window": "this"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Got it, boss. VS Code is now open with the dumbpipe project loaded in the current window.",
+      "first_text_ms": 3238,
+      "total_ms": 3659,
+      "tokens_per_sec": 36.7,
+      "outcome": "tool"
+    },
+    {
+      "id": "project-another-window",
+      "category": "projects",
+      "prompt": "open chorrent in another vscode window",
+      "expected": [
+        "launch_app"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "launch_app",
+          "args": {
+            "app_name": "vs code",
+            "target": "chorrent",
+            "window": "new"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Got it, boss. A new instance of Visual Studio Code is now open and ready to work on the chorrent project.",
+      "first_text_ms": 2769,
+      "total_ms": 3301,
+      "tokens_per_sec": 36.7,
+      "outcome": "tool"
+    },
+    {
+      "id": "project-explorer",
+      "category": "projects",
+      "prompt": "show me the sendme folder in file explorer",
+      "expected": [
+        "launch_app"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "launch_app",
+          "args": {
+            "app_name": "explorer",
+            "target": "sendme"
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "File Explorer has been opened with the sendme folder loaded. It's located at `C:\\Users\\me\\Desktop\\Scripts\\OPEN SOURCE\\sendme`. You can now navigate through its contents.",
+      "first_text_ms": 2738,
+      "total_ms": 3797,
+      "tokens_per_sec": 36.9,
+      "outcome": "tool"
+    },
+    {
+      "id": "project-branch",
+      "category": "projects",
+      "prompt": "which branch is dumbpipe on?",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "Boss, the dumbpipe project is on the `add-version-flag` branch.",
+      "first_text_ms": 1732,
+      "total_ms": 1733,
+      "tokens_per_sec": 46.7,
+      "outcome": "answered"
+    },
+    {
+      "id": "project-dirty",
+      "category": "projects",
+      "prompt": "does sendme have uncommitted changes?",
+      "expected": [
+        "none"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": false,
+      "reply": "Yes boss, the sendme project has uncommitted changes. It's on the show-connection-type branch with 3 uncommitted changes since the last commit on 2026-10-11. The files were last modified on 2026-10-12 and were last opened in VS Code on that date.",
+      "first_text_ms": 1544,
+      "total_ms": 2776,
+      "tokens_per_sec": 44.5,
+      "outcome": "answered"
+    },
+    {
+      "id": "weather-here",
+      "category": "tool",
+      "prompt": "is it going to rain today?",
+      "expected": [
+        "get_weather"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_weather",
+          "args": {},
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "No rain today, boss. Clear sky with a 10% chance of precipitation. High of 27\u00b0C, low of 19\u00b0C.",
+      "first_text_ms": 20828,
+      "total_ms": 21613,
+      "tokens_per_sec": 37.0,
+      "outcome": "tool"
+    },
+    {
+      "id": "hn-top",
+      "category": "tool",
+      "prompt": "what's trending on hacker news?",
+      "expected": [
+        "get_hackernews"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_hackernews",
+          "args": {
+            "category": "top",
+            "limit": 5
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Right now on Hacker News, trending topics include:\n\n- \"A tiny database in 500 lines\" \u2013 a project showcasing a compact database implementation.\n- \"Why SQLite is everywhere\" \u2013 a discussion on the popularity and use of SQLite in modern applications.\n\nThese highlight the ongoing interest in lightweight, efficient database technologies.",
+      "first_text_ms": 2012,
+      "total_ms": 3726,
+      "tokens_per_sec": 37.5,
+      "outcome": "tool"
+    },
+    {
+      "id": "ip-mine",
+      "category": "tool",
+      "prompt": "what's my public IP address?",
+      "expected": [
+        "get_ip_info"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_ip_info",
+          "args": {
+            "ip_address": ""
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Your public IP address is 203.0.113.7, located in Pune, Maharashtra, India. ISP: Example Broadband.",
+      "first_text_ms": 1629,
+      "total_ms": 2440,
+      "tokens_per_sec": 37.8,
+      "outcome": "tool"
+    },
+    {
+      "id": "wolfram-distance",
+      "category": "tool",
+      "prompt": "how far is the moon from earth?",
+      "expected": [
+        "query_wolfram_alpha",
+        "search_web"
+      ],
+      "passed": false,
+      "reason": "no_tool",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "The average distance from the Earth to the Moon is about 384,400 kilometers (238,855 miles). However, this distance varies slightly because the Moon orbits the Earth in an elliptical path\u2014ranging from about 363,300 km at perigee to 405,500 km at apogee.",
+      "first_text_ms": 1390,
+      "total_ms": 2824,
+      "tokens_per_sec": 36.2,
+      "outcome": "answered"
+    },
+    {
+      "id": "clip-read",
+      "category": "tool",
+      "prompt": "what's on my clipboard?",
+      "expected": [
+        "get_clipboard"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_clipboard",
+          "args": {},
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Your clipboard contains this Python function:\n\n```python\ndef add(a, b):\n    return a + b\n```\n\nIt defines a simple function that adds two numbers together.",
+      "first_text_ms": 1485,
+      "total_ms": 2412,
+      "tokens_per_sec": 38.3,
+      "outcome": "tool"
+    },
+    {
+      "id": "clip-review",
+      "category": "tool",
+      "prompt": "review the code I just copied",
+      "expected": [
+        "get_clipboard"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_clipboard",
+          "args": {},
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "I see the code you copied. It's a simple function named `add` that takes two parameters, `a` and `b`, and returns their sum. For example, `add(2, 3)` would return `5`. Let me know if you'd like me to analyze it further or help with anything specific about it.",
+      "first_text_ms": 1548,
+      "total_ms": 3376,
+      "tokens_per_sec": 38.2,
+      "outcome": "tool"
+    },
+    {
+      "id": "tricky-where-am-i",
+      "category": "tool",
+      "prompt": "where am I right now?",
+      "expected": [
+        "get_ip_info"
+      ],
+      "passed": false,
+      "reason": "no_tool",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "I don't have access to your physical location or device context. I can't determine where you are right now. Let me know if you'd like help with something specific.",
+      "first_text_ms": 1023,
+      "total_ms": 1560,
+      "tokens_per_sec": 36.7,
+      "outcome": "answered"
+    },
+    {
+      "id": "tricky-what-copied",
+      "category": "tool",
+      "prompt": "can you see what I copied?",
+      "expected": [
+        "get_clipboard"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_clipboard",
+          "args": {},
+          "source": "forced",
+          "blocked": null
+        }
+      ],
+      "nudged": true,
+      "tools_offered": true,
+      "reply": "Yes boss, I see what you copied. It's a simple Python function that adds two numbers together.",
+      "first_text_ms": 4799,
+      "total_ms": 5252,
+      "tokens_per_sec": 37.5,
+      "outcome": "tool"
+    },
+    {
+      "id": "tricky-temp-not-weather",
+      "category": "tool",
+      "prompt": "what's the temperature of my CPU?",
+      "expected": [
+        "get_system_status"
+      ],
+      "passed": false,
+      "reason": "no_tool",
+      "calls": [],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "I can't provide your CPU temperature directly because it requires hardware-level diagnostics that aren't accessible through general AI functions. However, I can check your system's overall hardware status if you'd like. Would you like me to do that instead?",
+      "first_text_ms": 1193,
+      "total_ms": 1928,
+      "tokens_per_sec": 36.4,
+      "outcome": "answered"
+    },
+    {
+      "id": "tricky-reminders-not-notes",
+      "category": "tool",
+      "prompt": "read me my reminders",
+      "expected": [
+        "list_reminders"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "list_reminders",
+          "args": {},
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "You have one active reminder:  \n#4 \u2014 [Fri, Oct 10 at 09:00 AM] submit the assignment.",
+      "first_text_ms": 1528,
+      "total_ms": 2289,
+      "tokens_per_sec": 38.0,
+      "outcome": "tool"
+    },
+    {
+      "id": "tricky-news-tech",
+      "category": "tool",
+      "prompt": "any interesting tech stories today?",
+      "expected": [
+        "get_hackernews",
+        "search_web"
+      ],
+      "passed": true,
+      "reason": "ok",
+      "calls": [
+        {
+          "name": "get_hackernews",
+          "args": {
+            "category": "top",
+            "limit": 5
+          },
+          "source": "native",
+          "blocked": null
+        }
+      ],
+      "nudged": false,
+      "tools_offered": true,
+      "reply": "Sure boss. Here are two interesting tech stories today:\n\n1. A developer shared a tiny database built in just 500 lines of code \u2014 a powerful reminder of how efficient and minimal database designs can be.\n\n2. There's a deep dive into why SQLite is so widely used \u2014 it's lightweight, reliable, and perfect for apps that don\u2019t need a full database server.\n\nBoth highlight how simple, well-designed tools can have massive real-world impact.",
+      "first_text_ms": 2053,
+      "total_ms": 4549,
+      "tokens_per_sec": 37.3,
+      "outcome": "tool"
+    }
+  ]
+}

@@ -543,7 +543,7 @@ A single question — "how's my project doing?" — returning **visitors, revenu
 | 2 | Broker (validate / policy / log) | **Done (v1)** — never-assume validation, `policy.toml`, approvals, claimed-action check, trace logging |
 | 3 | Orchestrator + tools, **fast path only** (terminal or voice) | **Working, measured** — agent loop runs over web, quick window, Telegram and terminal; latency traced per stage; real-model eval in place |
 | 4 | Add reasoner handoff | Not started (blocked on VRAM; design the role config first) |
-| 5 | Add RAG | Message recall only |
+| 5 | Add RAG | Message recall + project facts (first fact memory); document RAG not started |
 | 6 | Add metrics connector | Not started |
 | 7 | Build HUD / client | Interim web HUD exists; native HUD deferred |
 | 8 | Build ISO / bare metal | Not started |
@@ -554,7 +554,7 @@ A single question — "how's my project doing?" — returning **visitors, revenu
 
 ## 13. Current Capabilities
 
-State of the interim build as of 2026-10-08 (Windows laptop, `llama3.2` 3B). Code lives in the `gideon/` package; see `GIDEON_ARCHITECTURE.md` for internals.
+State of the interim build as of 2026-10-30 (Windows laptop, GTX 1650 Ti, `qwen3:4b-instruct` on Ollama 0.35.1, pinned — FINDINGS F-20). Code lives in the `gideon/` package; see `GIDEON_ARCHITECTURE.md` for internals and `FINDINGS.md` for every measurement.
 
 ### 13.1 Interfaces
 
@@ -571,12 +571,17 @@ State of the interim build as of 2026-10-08 (Windows laptop, `llama3.2` 3B). Cod
   - **System:** status/telemetry, launch apps (built-ins + any Start Menu app; new windows; a project folder in VS Code or Explorer, in a new or the current window), file search, clipboard, volume, media keys, guarded shell.
   - **Information:** web search, weather, markets, Hacker News, IP lookup, Wolfram Alpha, document reading (PDF/text).
   - **Personal:** reminders (set/list), notes and to-do list (save/list/complete), YouTube Music.
-- **Tool gating** by keyword triggers (a stand-in for the router).
-- Cache-stable prompt layout for Ollama's prefix cache; token budget measured from real schema size; history trimmed so tool output can never push the system prompt out of the window.
+- **Tool gating** by keyword triggers, plus an embedding **router** that offers only the relevant tools to models whose chat template re-reads the tool list every turn (llama); off for Qwen, whose template caches it (F-13, F-16).
+- Cache-stable prompt layout for Ollama's prefix cache; one tool list per turn so retries reuse the cache (F-20); token budget measured from real schema size; history trimmed so tool output can never push the system prompt out of the window.
+- History replays earlier tool calls with short, dated results (outside content is not repeated), so commands after a few chat turns still get tool calls (F-20, F-23).
+- **No false "done":** until a tool has acted, a reply's opening is held back and checked for claims — promises, reported results, invented live facts or absences, false refusals. A claim is replaced by a JSON-schema-constrained decision (one tool or a question) or cut; after a decline it is only cut (F-12 to F-23).
+- One "boss"/"sir" per reply, enforced on the stream (F-21).
 - Workarounds for small-model failures: text-emitted tool calls are intercepted; "play X" is disambiguated deterministically.
 
 ### 13.3 Broker & security (partial)
 
+- **Never-assume validation:** a required value that is missing, invented or only pointing words ("copy that") blocks the call and G.I.D.E.O.N asks; an invented optional value is dropped. A value counts as the user's when they said it — shortenings, words run together and close typos included (F-15, F-17, F-18, F-23).
+- **Policy file** (`policy.toml`): each tool's class (observe / mutate / execute), approval rule and allowed channels; a malformed file stops the engine.
 - **Approval queue:** the shell always waits for the user's click; app launching waits whenever outside content entered the turn (taint tracking). Approve/Deny cards in HUD and quick window, y/N in the terminal. Requests expire; replays are refused.
 - Outside content is fenced as data; forged fence markers are neutralised.
 - Irreversible-command denylist (including encoded/obfuscated execution); shell audit log.
@@ -603,18 +608,19 @@ State of the interim build as of 2026-10-08 (Windows laptop, `llama3.2` 3B). Cod
 
 ### 13.7 Engineering
 
-- 512 unit tests (model mocked), ruff + mypy clean, pre-commit hooks; tests run against an isolated data directory.
+- 618 unit tests (model mocked), ruff + mypy clean, pre-commit hooks; tests run against an isolated data directory.
 
-### 13.8 Measurement (Phase 1)
+### 13.8 Measurement
 
 - Every turn traced (§6.3) with per-stage latency and correction signals; 👍/👎 in the HUD.
-- Real-model eval: 95 cases, fake tools, isolated data, reports and model comparisons.
+- Real-model eval: 108 cases in 7 categories (tool choice, slots, chat, clarify, media, projects, history), fake tools, isolated data, reports and model comparisons. Baseline on the restored runtime (2026-10-30, `evals/reports/20261030-111552-*`): **95.4% (103/108)**, first word 1.8 s median / 4.2 s p90, generation 37.7 tok/s (F-24).
 - Found and fixed through measurement: the prompt-cache layout never actually reused Ollama's cache (the live context was hoisted into the system block by the chat template). Turns now reuse the cached prefix — prompt processing ~7.5 s → ~0.5 s on CPU.
-- Measured cost of offering all tools: ~2,300 extra prompt tokens on every tool-enabled turn (the template places tool schemas in the last user message, so they are never cached).
+- Measured cost of offering all tools: ~2,300 extra prompt tokens on every tool-enabled turn with llama3.2 (its template places tool schemas in the last user message, so they are never cached).
+- Found through measurement: Ollama 0.40.x's llama.cpp runs ~6× slower on this GPU (no tensor cores); pinned to 0.35.1 — prompts 178 tok/s, generation 46 tok/s (F-20).
 
 ### 13.9 Not yet built
 
-Constrained (JSON-schema) decoding · standing approval rules · speech input (STT/wake word) · document RAG and personal fact memory (people, preferences) · reasoner role · `draft_email`, `add_to_watchlist`, `get_project_metrics` · LAN thin-client auth · keyring secrets · Linux port.
+Standing approval rules · speech input (STT/wake word) · document RAG and personal fact memory (people, preferences) · reasoner role · `draft_email`, `add_to_watchlist`, `get_project_metrics` · LAN thin-client auth · keyring secrets · Linux port.
 
 ---
 
@@ -747,3 +753,4 @@ These are **not** in the v1 build order (§12.3) and are not built until steps 1
 - **§18** — new "Beyond v1" section: home automation, background tasks, mobile client, presence and context, learning from corrections, personality — each with the hook the v1 harness must leave for it.
 - Formatting: inline LaTeX (`$$24/7$$`) replaced with plain text.
 - **§6.2, §13.2, §13.4** (2026-10-12) — fact memory started with project knowledge; `launch_app` opens new windows and project folders.
+- **§12.3, §13** (2026-10-30) — status refreshed: model, router, never-assume, policy file, false-claim handling, history replay, addressing rule, eval size and baseline, the pinned Ollama version; constrained decoding moved out of "not yet built".

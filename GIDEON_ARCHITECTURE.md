@@ -71,7 +71,7 @@
 - **Thinking models** (e.g. Qwen3) are called with `think=False` on the fast
   path; Ollama's reported capabilities decide, cached per model.
 - **Token budget** (`brain/prompt.py`): `num_ctx` minus the tool schemas
-  Ollama prepends (measured at import, ~2,580 tokens for 22 tools), minus the
+  Ollama prepends (measured at import, ~2,690 tokens for 22 tools), minus the
   memory reserve, minus room for the answer. Overflowing this silently drops
   the system prompt off the front. Tool output is capped
   (`GIDEON_TOOL_RESULT_MAX_CHARS`) and `trim_to_budget` re-checks the whole

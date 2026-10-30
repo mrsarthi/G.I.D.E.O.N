@@ -172,6 +172,11 @@ def test_guessed_reminder_time_is_never_saved():
         "Yes boss, I can check your GPU temperature right now. Let me retrieve that for you.",
         "I don't have access to real-time weather data. Try a weather app.",
         "Certainly sir. I've triggered the media control to skip to the next track.",
+        # A reading with no tool run is invented (the check only runs before a
+        # tool has acted; eval 2026-10-30: "your battery is at 87%").
+        "Your GPU is at 52 degrees.",
+        "Yes boss, your battery is at 87%.",
+        "Yes boss, here are the top trending stories from Hacker News:",
         # A bare past tense opening a sentence (2026-10-27, no tool call)
         "Paused the music, sir.",
         "Done. Opened Notepad for you.",
@@ -188,7 +193,6 @@ def test_claims_are_detected(reply):
         "Why is the sky blue? Rayleigh scattering.",
         "Let me explain how a hash map works.",
         "I am doing well, thanks for asking.",
-        "Your GPU is at 52 degrees.",
         "The shop is open until 9 pm on weekdays.",
         "Python has been around since 1991.",
         "That setting is now deprecated in newer versions.",
@@ -631,3 +635,22 @@ def test_absence_claimed_without_looking(reply, expected):
 )
 def test_a_typo_is_still_the_users_word(value, said, expected):
     assert is_grounded(value, said) is expected
+
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        "Here are the top three reasons to learn Python.",
+        "Your battery will last longer if you dim the screen.",
+        "Here's how flash attention works.",
+    ],
+)
+def test_explanations_are_not_readings(reply):
+    assert not claims_action(reply)
+
+
+def test_a_gerund_after_a_command_is_a_claim():
+    """Eval 2026-10-30: "Opening dumbpipe in a new VS Code window." — nothing opened."""
+    assert claims_action("Yes boss, opening dumbpipe in a new VS Code window.", command=True)
+    assert not claims_action("Opening hours for the museum are 9 to 5.", command=False)

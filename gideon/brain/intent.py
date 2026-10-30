@@ -206,6 +206,22 @@ _CLAIM_PATTERNS = (
         r"(?:the|your|a|an|it|that|this|some|now|up|for\s+(?:the|your|a|an|you)|(?-i:[A-Z][\w.+-]*))\b",
         re.IGNORECASE,
     ),
+    # A reading of the user's own machine, with a number: "Yes boss, your
+    # battery is at 87%." (eval 2026-10-30, no tool called). Only
+    # get_system_status knows that.
+    re.compile(
+        r"\byour\s+(?:battery|cpu|gpu|ram|memory|disk|storage|drive|ip(?:\s+address)?|volume)\b"
+        r"[^.!?\n]{0,30}?\b(?:is|are|at|stands|sits|reads|shows)\b[^.!?\n]{0,20}?\d",
+        re.IGNORECASE,
+    ),
+    # Time-sensitive results presented as fetched: "Here are the top trending
+    # stories from Hacker News", "Here's the latest on Nvidia stock" (eval
+    # 2026-10-30, invented, no tool called).
+    re.compile(
+        r"\bhere(?:['’]s|\s+is|\s+are)\s+(?:the\s+|your\s+)?(?:latest|current|trending|"
+        r"top\s+(?:\w+\s+){0,2}?(?:stories|posts|headlines|articles))\b",
+        re.IGNORECASE,
+    ),
     # "Here are your current reminders: …", "Here's what's on your to-do list"
     re.compile(
         r"\bhere(?:['’]s|\s+is|\s+are)\s+(?:what['’]?s\s+on\s+)?(?:your|the)\s+"
@@ -272,9 +288,10 @@ _SENTENCES = re.compile(r"[^.!?\n]+(?:[.!?]+|\n|$)")
 # conversation the same words are innocent ("the shop is open until 9"),
 # so they only count when the user's message was a command.
 _STATE_WORDS = re.compile(
-    r"\b(?:open(?:ed)?|launch(?:ed)?|running|playing|paused|muted|unmuted|stopped|resumed|"
-    r"closed|started|done|all\s+set|set|saved|added|copied|scheduled|skipped|"
-    r"turned\s+(?:up|down|on|off))\b",
+    r"\b(?:open(?:ed|ing)?|launch(?:ed|ing)?|running|playing|paus(?:ed|ing)|(?:un)?mut(?:ed|ing)|"
+    r"stopp(?:ed|ing)|resum(?:ed|ing)|clos(?:ed|ing)|start(?:ed|ing)|done|all\s+set|set|setting|"
+    r"sav(?:ed|ing)|add(?:ed|ing)|cop(?:ied|ying)|schedul(?:ed|ing)|skipp(?:ed|ing)|"
+    r"turn(?:ed|ing)\s+(?:up|down|on|off))\b",
     re.IGNORECASE,
 )
 
